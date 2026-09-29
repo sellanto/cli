@@ -88,7 +88,7 @@ import https from 'node:https';
  * сравнява НИЗОВЕ, тоест непроменена версия върху променен файл значи
  * „вече си на най-новото" пред човек, който държи стария текст.
  */
-const VERSION = '2026-09-29.3';
+const VERSION = '2026-09-29.4';
 
 const CONFIG = '.sellanto.json';
 const TOKEN_FILE = '.sellanto.token';
@@ -155,7 +155,19 @@ function config() {
     die(`Няма ${CONFIG}. Пусни първо:\n     ${ME} init --api <адрес> --store <public_id>`);
   }
 
-  const raw = JSON.parse(fs.readFileSync(CONFIG, 'utf8'));
+  /*
+  | ⚠ ТОЗИ ФАЙЛ СЕ РЕДАКТИРА НА РЪКА — самата документация казва да се
+  | сложи `"autoUpdate": true` в него. Една забравена запетая и човекът
+  | виждаше SyntaxError със стек — тоест не разбираше, че грешката е негова
+  | и е на един знак разстояние.
+  */
+  let raw;
+
+  try {
+    raw = JSON.parse(fs.readFileSync(CONFIG, 'utf8'));
+  } catch (e) {
+    die(`${CONFIG} не е валиден JSON: ${e.message}`);
+  }
 
   if (!raw.api || !raw.store) die(`${CONFIG} е без \`api\` или \`store\`.`);
 
@@ -265,8 +277,15 @@ function call(cfg, method, route, body, retried = false, raw = false) {
 
           say(`  … таванът на заявките е ударен, изчаквам ${wait}s`);
 
+          /*
+          | ⚠ И `raw` СЕ ПРЕНАСЯ. Без него повторният опит разбира
+          | отговора като JSON — а единственият `raw` адрес днес раздава
+          | САМИЯ ИНСТРУМЕНТ, тоест `selfupdate` под ударен таван виждаше
+          | `null` и казваше „платформата не даде инструмента“ — лъжливо изречение
+          | точно в мига, в който обновяването има значение.
+          */
           return void setTimeout(
-            () => call(cfg, method, route, body, true).then(resolve, reject),
+            () => call(cfg, method, route, body, true, raw).then(resolve, reject),
             (Number.isFinite(wait) && wait > 0 ? wait : 5) * 1000,
           );
         }
@@ -588,15 +607,20 @@ async function push(cfg, args = []) {
   const { changed, removed, local } = await changes(cfg);
   const alsoDelete = args.includes('--delete');
 
+  /*
+  | ⚠ ИЗТРИТИТЕ СЕ КАЗВАТ ВИНАГИ, А НЕ САМО КОГАТО НЯМА ДРУГО.
+  |
+  | Човек, който е изтрил една секция И е поправил друга, виждаше само
+  | второто — и оставаше с убеждението, че изтритото е заминало. Открива
+  | се най-рано при `publish`, тоест пред купувачи.
+  */
+  if (removed.length > 0 && !alsoDelete) {
+    for (const route of removed) say(`  изтрит  ${route}`);
+    say(`  липсва${removed.length === 1 ? '' : 'т'} локално: ${files(removed.length)}. За да се махнат и от магазина: push --delete`);
+  }
+
   if (changed.length === 0 && (removed.length === 0 || !alsoDelete)) {
-    if (removed.length > 0) {
-      for (const route of removed) say(`  изтрит  ${route}`);
-      say(`\n  липсва${removed.length === 1 ? '' : 'т'} локално: ${files(removed.length)}. За да се махнат и от магазина: push --delete`);
-
-      return;
-    }
-
-    say('  ✓ Няма какво да се качи.');
+    if (removed.length === 0) say('  ✓ Няма какво да се качи.');
 
     return;
   }
@@ -646,7 +670,17 @@ async function push(cfg, args = []) {
     }
   }
 
-  if (ok === 0) { say(`\n  Нито един файл не влезе в черновата.`); return; }
+  /*
+  | ⚠ ОТКАЗАН ФАЙЛ Е НЕУСПЕХ И ЗА ИЗХОДНИЯ КОД.
+  |
+  | `sellanto push && sellanto publish` е очевидният ред в един скрипт. С
+  | изход 0 върху отказ той публикува СТАРАТА чернова — тоест пред
+  | купувачи отива нещо, което човекът мисли, че е поправено. Червеният
+  | ред на екрана не се чете от `&&`.
+  */
+  if (bad > 0) process.exitCode = 1;
+
+  if (ok === 0) { say(`\n  Нито един файл не влезе в черновата.`); process.exitCode = 1; return; }
 
   const url = (await remote(cfg, 'GET', 'preview')).preview_url;
 
@@ -699,34 +733,71 @@ async function watch(cfg) {
     const batch = [...pending];
     pending.clear();
 
-    const payload = batch.map((route) => ({
-      path: route,
-      // Изчезнал локално значи „върни доставения файл“ — надгробен камък.
-      content: fs.existsSync(route) ? fs.readFileSync(route, 'utf8') : null,
-    }));
+    /*
+    | ⚠ ЧЕТЕНЕТО Е В НАДПРЕВАРА С РЕДАКТОРА, И ТОЙ ПЕЧЕЛИ.
+    |
+    | Между `existsSync` и `readFileSync` има прозорец, а повечето редактори
+    | запазват с временен файл и преименуване — тоест файлът го няма
+    | точно тогава, когато човекът е натиснал Ctrl+S. Досега това беше
+    | изключение в `void flush()`, тоест НАБЛЮДАТЕЛЯТ УМИРАШЕ — а човекът
+    | продължаваше да пише с убеждението, че се качва.
+    |
+    | Непрочетен файл се ПРОПУСКА, а не се праща като надгробен камък:
+    | преименуването ще дойде със свое събитие след миг, а изтриване по
+    | погрешка се вижда от купувачи.
+    */
+    const payload = [];
 
-    for (const part of batches(payload)) {
-      const out = await remote(cfg, 'PUT', 'files', { files: part }).catch((e) => {
-        say(`  ✗ ${e.message}`);
+    for (const route of batch) {
+      if (!fs.existsSync(route)) {
+        // Изчезнал локално значи „върни доставения файл“ — надгробен камък.
+        payload.push({ path: route, content: null });
 
-        return null;
-      });
-
-      if (out === null) continue;
-
-      for (const one of out.written ?? []) {
-        say(one.state === 'draft_removed' ? `  − ${one.path}` : `  ↑ ${one.path}`);
+        continue;
       }
 
-      for (const one of out.refused ?? []) {
-        const where = one.line ? ` (ред ${one.line})` : '';
-        const why = one.detail ? `: ${one.detail}` : '';
-
-        say(`  ✗ ${one.path}${where} — ${one.reason}${why}`);
+      try {
+        payload.push({ path: route, content: fs.readFileSync(route, 'utf8') });
+      } catch (e) {
+        say(`  … ${route} се пише в този миг (${e.code ?? e.message}) — чакам следващото запазване.`);
       }
     }
 
-    sending = false;
+    if (payload.length === 0) {
+      sending = false;
+
+      return;
+    }
+
+    /*
+    | ⚠ `sending` СЕ ПУСКА И ПРИ ГРЪМНАЛО. Заседне ли на `true`,
+    | наблюдателят остава жив, събира събития и НЕ качва нищо повече —
+    | мълчаливо, докато човекът пише.
+    */
+    try {
+      for (const part of batches(payload)) {
+        const out = await remote(cfg, 'PUT', 'files', { files: part }).catch((e) => {
+          say(`  ✗ ${e.message}`);
+
+          return null;
+        });
+
+        if (out === null) continue;
+
+        for (const one of out.written ?? []) {
+          say(one.state === 'draft_removed' ? `  − ${one.path}` : `  ↑ ${one.path}`);
+        }
+
+        for (const one of out.refused ?? []) {
+          const where = one.line ? ` (ред ${one.line})` : '';
+          const why = one.detail ? `: ${one.detail}` : '';
+
+          say(`  ✗ ${one.path}${where} — ${one.reason}${why}`);
+        }
+      }
+    } finally {
+      sending = false;
+    }
 
     // Докато течеше тази заявка, може да е се натрупало ново.
     if (pending.size > 0) void flush();
@@ -757,7 +828,9 @@ async function watch(cfg) {
 async function publish(cfg) {
   const done = await remote(cfg, 'POST', 'publish');
 
-  for (const path of done.paths ?? []) say(`  ▸ ${path}`);
+  // ⚠ НЕ `path`: това е името на внесения модул, и засенчването му
+  // чака първия, който допише ред в този цикъл.
+  for (const one of done.paths ?? []) say(`  ▸ ${one}`);
 
   say(done.published === 0
     ? '  Черновата е празна — нищо не се смени.'
@@ -966,6 +1039,15 @@ async function restore(cfg, args = []) {
 
     return;
   }
+
+  /*
+  | ⚠ `publish` пуска ЦЯЛАТА ЧЕРНОВА, не само върнатия файл.
+  |
+  | Чете се като „върни този и го пусни“, а ако в черновата чака полуготова
+  | работа, тя също тръгва пред купувачи. Казва се ПРЕДИ хода,
+  | защото списъкът СЛЕД него е вече история.
+  */
+  say('  ⚠ `--publish` пуска цялата чернова, не само този файл:');
 
   await publish(cfg);
 }
