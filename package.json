@@ -1,0 +1,29 @@
+{
+  "name": "@sellanto/cli",
+  "version": "2026.929.3",
+  "description": "Темата на магазин в Sellanto, локално: сваля, качва при запазване, публикува по команда.",
+  "bin": {
+    "sellanto": "sellanto-theme.mjs"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "sellanto-theme.mjs"
+  ],
+  "scripts": {
+    "test": "node proverka.mjs"
+  },
+  "dependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sellanto/cli.git"
+  },
+  "homepage": "https://github.com/sellanto/cli#readme",
+  "bugs": {
+    "url": "https://github.com/sellanto/cli/issues"
+  },
+  "license": "MIT",
+  "private": false
+}

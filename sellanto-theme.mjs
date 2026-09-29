@@ -27,17 +27,25 @@
 //      Р14-1 насам НЕ дава право върху кода на темата, включително за заварени
 //      ключове — правата се смятат на всяка заявка, а не се пазят в реда.
 //      (Иска още право `themes.edit_code` и план, който има редактора на код.)
-//   2. В папката, в която искаш темата:
+//   2. Слагаш го като команда `sellanto` (или го викаш с `node` — работи и без):
+//
+//        npm i -g github:sellanto/cli
+//
+//      ⚠ Инсталацията е от ХРАНИЛИЩЕТО, не от npm регистъра. Регистърът е още
+//      едно място, от което може да дойде различен файл; `selfupdate` пък тегли
+//      от САМИЯ МАГАЗИН, тоест командата се лекува сама срещу вярното API.
+//
+//   3. В папката, в която искаш темата:
 //
 //        export SELLANTO_TOKEN="ключът"          # или го сложи в .sellanto.token
-//        node sellanto-theme.mjs init --api https://<магазинът> --store <public_id>
-//        node sellanto-theme.mjs pull
+//        sellanto init --api https://<магазинът> --store <public_id>
+//        sellanto pull
 //
-//   3. Пишеш с каквото пишеш. После:
+//   4. Пишеш с каквото пишеш. После:
 //
-//        node sellanto-theme.mjs watch            # качва при всяко запазване
-//        node sellanto-theme.mjs preview          # адресът, на който се вижда
-//        node sellanto-theme.mjs publish          # чак сега го виждат клиентите
+//        sellanto watch            # качва при всяко запазване
+//        sellanto preview          # адресът, на който се вижда
+//        sellanto publish          # чак сега го виждат клиентите
 //
 // КОМАНДИТЕ
 // ─────────
@@ -80,7 +88,7 @@ import https from 'node:https';
  * сравнява НИЗОВЕ, тоест непроменена версия върху променен файл значи
  * „вече си на най-новото" пред човек, който държи стария текст.
  */
-const VERSION = '2026-09-29.1';
+const VERSION = '2026-09-29.3';
 
 const CONFIG = '.sellanto.json';
 const TOKEN_FILE = '.sellanto.token';
@@ -102,6 +110,30 @@ const EXTENSIONS = ['.twig', '.json', '.css', '.js', '.txt', '.md'];
 const say = (...a) => console.log(...a);
 const die = (m) => { console.error('\n  ✗ ' + m + '\n'); process.exit(1); };
 
+/**
+ * КАК Е ПОВИКАН ИНСТРУМЕНТЪТ — за да го пише в съветите със същите думи.
+ *
+ * Три форми стигат дотук и трите са редовни: `sellanto` (сложен на PATH),
+ * `./sellanto-theme.mjs` (изпълнимият бит и решетката отгоре) и
+ * `node sellanto-theme.mjs`. Съвет, който казва третото на човек, написал
+ * първото, е съвет, който не се копира — а точно за копиране е.
+ *
+ * ⚠ При глобална инсталация argv[1] е файлът В `node_modules`, не името на
+ * обвивката, която npm е сложил на PATH. Затова се пита за папката, а не се
+ * гледа само името.
+ */
+const ME = (() => {
+  const self = process.argv[1] ?? '';
+
+  if (self.split(path.sep).join('/').includes('/node_modules/')) return 'sellanto';
+
+  const base = path.basename(self);
+
+  if (base === '') return 'sellanto';
+
+  return /\.(mjs|cjs|js)$/.test(base) ? `node ${base}` : base;
+})();
+
 /** Един файл или много — „1 файла“ не е изречение на български. */
 const files = (n) => (n === 1 ? '1 файл' : `${n} файла`);
 
@@ -120,7 +152,7 @@ function saveConfig(cfg) {
 
 function config() {
   if (!fs.existsSync(CONFIG)) {
-    die(`Няма ${CONFIG}. Пусни първо:\n     node sellanto-theme.mjs init --api <адрес> --store <public_id>`);
+    die(`Няма ${CONFIG}. Пусни първо:\n     ${ME} init --api <адрес> --store <public_id>`);
   }
 
   const raw = JSON.parse(fs.readFileSync(CONFIG, 'utf8'));
@@ -402,7 +434,7 @@ async function init(args) {
     say(`  ✓ .gitignore ← ${want.join(', ')}`);
   }
 
-  say('\n  Сега: node sellanto-theme.mjs pull\n');
+  say(`\n  Сега: ${ME} pull\n`);
 }
 
 /** Темата, както я вижда магазинът в момента — включително доставените файлове. */
@@ -515,7 +547,7 @@ async function pull(cfg) {
   await refreshReference(cfg);
 
   say(`  ✓ ${files(written)} в ${process.cwd()}`);
-  say(`\n  Темата е ${listing.theme}. Пиши, после: node sellanto-theme.mjs watch\n`);
+  say(`\n  Темата е ${listing.theme}. Пиши, после: ${ME} watch\n`);
 }
 
 /** Какво се различава — без да качва нищо. */
@@ -548,7 +580,7 @@ async function status(cfg) {
 
   if (changed.length === 0) return;
 
-  say(`\n  ${files(changed.length)} за качване. Пусни: node sellanto-theme.mjs push`);
+  say(`\n  ${files(changed.length)} за качване. Пусни: ${ME} push`);
 }
 
 /** Качва разликите веднъж. */
@@ -900,7 +932,7 @@ async function versions(cfg, args = []) {
     say(`    ${String(one.no).padStart(3)}  ${one.created_at}${one.empty ? '   (тогава беше темата)' : ''}`);
   }
 
-  say(`\n  Връщане: node sellanto-theme.mjs restore ${only} --version <номер>\n`);
+  say(`\n  Връщане: ${ME} restore ${only} --version <номер>\n`);
 }
 
 /**
@@ -930,7 +962,7 @@ async function restore(cfg, args = []) {
 
   if (!args.includes('--publish')) {
     say(`\n  Виж я: ${out.preview_url}`);
-    say('  После: node sellanto-theme.mjs publish\n');
+    say(`  После: ${ME} publish\n`);
 
     return;
   }
@@ -963,7 +995,7 @@ async function conflicts(cfg) {
 
   say(out.stale === 0
     ? '\n  ✓ Нито един не е изостанал от темата.'
-    : `\n  ⚠ ${files(out.stale)} ${out.stale === 1 ? 'е копие' : 'са копия'} на файл, който платформата е сменила оттогава.\n    Сравни с доставения: node sellanto-theme.mjs diff <път>`);
+    : `\n  ⚠ ${files(out.stale)} ${out.stale === 1 ? 'е копие' : 'са копия'} на файл, който платформата е сменила оттогава.\n    Сравни с доставения: ${ME} diff <път>`);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1198,7 +1230,7 @@ async function checkTool(cfg) {
   }
 
   say(`  ⚠ Има нова версия на инструмента: ${out.version} (твоята е ${VERSION}).`);
-  say('    Обнови се с: node sellanto-theme.mjs selfupdate\n');
+  say(`    Обнови се с: ${ME} selfupdate\n`);
 }
 
 /**
@@ -1251,8 +1283,24 @@ async function applyUpdate(cfg, meta) {
   const self = process.argv[1];
   const temp = `${self}.new`;
 
-  fs.writeFileSync(temp, source, 'utf8');
-  fs.renameSync(temp, self);
+  /*
+  | ⚠ ГЛОБАЛНАТА ИНСТАЛАЦИЯ ЧЕСТО НЕ Е ЗА ПИСАНЕ.
+  |
+  | `npm i -g` слага файла там, където обикновен потребител няма право да пише.
+  | Без това хващане човекът вижда EACCES и стек, тоест не разбира, че
+  | инструментът му работи — просто не може да се презапише сам.
+  */
+  try {
+    fs.writeFileSync(temp, source, 'utf8');
+    fs.renameSync(temp, self);
+  } catch (e) {
+    try { fs.unlinkSync(temp); } catch { /* няма какво да се махне */ }
+
+    say(`  ✗ Не мога да запиша ${self} (${e.code ?? e.message}).`);
+    say('    Глобална инсталация се обновява с: npm i -g github:sellanto/cli\n');
+
+    return false;
+  }
 
   say(`  ✓ Обновен до ${meta.version}. Пусни командата пак.`);
 
@@ -1270,7 +1318,14 @@ async function selfupdate(cfg) {
 
   say(`  ${VERSION} → ${out.version} (${out.size} байта)`);
 
-  await applyUpdate(cfg, out);
+  /*
+  | ⚠ ОТКАЗЪТ ДА СЕ ЗАПИШЕ Е НЕУСПЕХ И ЗА ИЗХОДНИЯ КОД.
+  |
+  | Разминат отпечатък, папка без право за писане, отрязан отговор — всичкото
+  | се КАЗВА на екрана, но екранът не се чете от cron и от CI. С изход 0
+  | автоматизацията мисли, че се е обновила — а точно това не се е случило.
+  */
+  if (!await applyUpdate(cfg, out)) process.exitCode = 1;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1279,6 +1334,8 @@ async function selfupdate(cfg) {
 
 const HELP = `
   Темата на магазина ти, локално.
+
+  Повиква се с «${ME}»:
 
     init --api <адрес> [--store <public_id>] [--theme <слуг>]
     themes                   кои теми може да пипа този магазин

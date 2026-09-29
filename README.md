@@ -1,4 +1,4 @@
-# `sellanto-theme.mjs` — темата на магазина, на твоя компютър
+# `sellanto` — темата на магазина, на твоя компютър
 
 Инструмент за **търговеца и неговия разработчик**: сваля темата на един магазин
 в папка, качва я обратно при запазване и я пуска пред клиентите, когато кажеш.
@@ -8,28 +8,54 @@
 
 ---
 
-## ⚠ Не се сваля оттук
+## Инсталация
 
-Клиентът се раздава **от самия магазин**:
+```bash
+npm i -g github:sellanto/cli
+```
+
+Дава команда `sellanto`. Иска **Node 20+** и няма нито една зависимост.
+
+⚠ **От хранилището, не от npm регистъра.** Регистърът е още едно място, от
+което може да дойде различен файл. А `selfupdate` тегли от **самия магазин** —
+тоест командата се лекува сама срещу API-то, с което говори.
+
+Без Node пакетен мениджър работи и така:
 
 ```bash
 export SELLANTO_TOKEN="ключът"
 
 curl -H "Authorization: Bearer $SELLANTO_TOKEN" \
   https://<магазинът>/api/2026-07/tools/theme-cli/download \
-  -o sellanto-theme.mjs
+  -o sellanto && chmod +x sellanto
 ```
 
-Версията на клиента е част от съвместимостта с API-то: нов адрес, нов таван, нов
-код за отказ. Стар клиент срещу ново API казва „не стана" вместо изречение.
+Тогава се вика `./sellanto` (или `node sellanto-theme.mjs`, ако си запазил
+разширението). Инструментът си отпечатва съветите с името, с което си го
+повикал.
+
+## ⚠ Раздава се от магазина
+
+Освен горното, всеки магазин дава клиента на
+`GET /api/{версия}/tools/theme-cli/download`. Това не е втори канал за удобство:
+версията на клиента е част от съвместимостта с API-то — нов адрес, нов таван,
+нов код за отказ. Стар клиент срещу ново API казва „не стана" вместо изречение.
 Когато същата платформа, която отговаря на заявките, дава и клиента, двете не
-могат да се разминат. Затова и няма npm пакет.
+могат да се разминат.
+
+Инструментът проверява за нова версия веднъж на ден и **казва**; обновява се с
+`sellanto selfupdate`. Не се обновява сам по подразбиране, защото тук код от
+мрежата става код на твоята машина — за без ръце сложи `"autoUpdate": true` в
+`.sellanto.json`.
+
+⚠ При глобална инсталация `selfupdate` може да няма право да пише в папката на
+npm. Тогава го казва и обновяването е `npm i -g github:sellanto/cli`.
 
 ## Тогава за какво е това репо
 
-За да можеш да **прочетеш кода, преди да го пуснеш**. Файлът, който `curl`
-слага при теб, изпълнява се на твоята машина и пише във витрината ти — това не е
-нещо, което се взима на доверие от една команда.
+За да можеш да **прочетеш кода, преди да го пуснеш**. Файлът се изпълнява на
+твоята машина и пише във витрината ти — това не е нещо, което се взима на
+доверие от една команда.
 
 Провери, че полученото е същото:
 
@@ -44,8 +70,6 @@ curl -sH "Authorization: Bearer $SELLANTO_TOKEN" \
 има нещо, което мени отговори.
 
 Тук се приемат и **въпроси и сигнали за грешки** (Issues).
-
----
 
 ## Ключът
 
@@ -67,12 +91,12 @@ curl -sH "Authorization: Bearer $SELLANTO_TOKEN" \
 ## Работният цикъл
 
 ```bash
-node sellanto-theme.mjs init --api https://<магазинът>
-node sellanto-theme.mjs pull        # темата + .sellanto/THEME-REFERENCE.md
+sellanto init --api https://<магазинът>
+sellanto pull        # темата + .sellanto/THEME-REFERENCE.md
 
-node sellanto-theme.mjs watch       # качва при всяко запазване
-node sellanto-theme.mjs preview     # адресът, на който се вижда
-node sellanto-theme.mjs publish     # чак сега го виждат купувачите
+sellanto watch       # качва при всяко запазване
+sellanto preview     # адресът, на който се вижда
+sellanto publish     # чак сега го виждат купувачите
 ```
 
 Магазинът се открива сам, ако ключът стига до един. При няколко — `--store`.
@@ -120,10 +144,10 @@ node sellanto-theme.mjs publish     # чак сега го виждат купу
 ## Когато нещо се обърка
 
 ```bash
-node sellanto-theme.mjs diff                     # кои файла съм пипал
-node sellanto-theme.mjs diff sections/hero.twig  # какво точно, ред по ред
-node sellanto-theme.mjs versions sections/hero.twig
-node sellanto-theme.mjs restore sections/hero.twig --version 3 --publish
+sellanto diff                     # кои файла съм пипал
+sellanto diff sections/hero.twig  # какво точно, ред по ред
+sellanto versions sections/hero.twig
+sellanto restore sections/hero.twig --version 3 --publish
 ```
 
 Всяко публикуване оставя следа — същата история, която пази и редакторът в
@@ -136,8 +160,8 @@ node sellanto-theme.mjs restore sections/hero.twig --version 3 --publish
 ## Друга тема, преди да я пуснеш
 
 ```bash
-node sellanto-theme.mjs themes                       # до кои имаш право
-node sellanto-theme.mjs init --api https://... --theme kometa
+sellanto themes                       # до кои имаш право
+sellanto init --api https://... --theme kometa
 ```
 
 Презаписите се пазят по двойката (магазин, тема), тоест тема може да бъде
@@ -163,20 +187,20 @@ node sellanto-theme.mjs init --api https://... --theme kometa
 **Двоичните файлове** (`.woff2`, `.png`) не минават през този канал — качват се
 като медия от админа. Папката не е пълно копие на темата.
 
-## Обновяване
-
-Инструментът проверява за нова версия веднъж на ден и **казва**; обновява се с
-`selfupdate`. Не се обновява сам по подразбиране, защото тук код от мрежата
-става код на твоята машина — за без ръце сложи `"autoUpdate": true` в
-`.sellanto.json`.
-
-Версията е дата (`2026-09-29`), с `.N` при втора поправка в същия ден.
-
 ## Отнемане на достъпа
 
 Изтрий ключа от същия екран. Спира веднага: правата се смятат на всяка заявка, а
 не се пазят в реда на ключа. Вече публикуваните файлове остават — връщат се с
 `restore` или от редактора в админа.
+
+## Лиценз и проверка
+
+MIT — виж [LICENSE](LICENSE).
+
+`npm test` проверява това, което тази папка обещава: че версията в
+`package.json` и версията в скрипта не са се разминали, че зависимости няма, че
+командата се казва `sellanto` и че инструментът тръгва. Работата му срещу
+истинско API се проверява в монорепото на Sellanto.
 
 ---
 
@@ -187,8 +211,10 @@ node sellanto-theme.mjs init --api https://... --theme kometa
 uploads on save to a draft layer, and publishes to the live storefront on an
 explicit command. Single file, no dependencies, Node 20+.
 
-**It is not installed from here or from npm.** Each store serves the client
-itself, at `GET /api/{version}/tools/theme-cli/download`, so the client and the
-API it talks to cannot drift apart. This repository exists so you can read the
-code before running it and verify that the file your store served you is byte
-for byte the file published here. Issues are welcome.
+Install with `npm i -g github:sellanto/cli`, which gives you a `sellanto`
+command. **Not from the npm registry:** every store also serves the client
+itself, at `GET /api/{version}/tools/theme-cli/download`, and `selfupdate`
+pulls from there — so the client and the API it talks to cannot drift apart.
+This repository exists so you can read the code before running it and verify
+that the file your store served you is byte for byte the file published here.
+MIT licensed. Issues are welcome.
