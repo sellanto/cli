@@ -1,101 +1,96 @@
 #!/usr/bin/env node
 // ═══════════════════════════════════════════════════════════════════════════
-// ТЕМАТА НА МАГАЗИНА, НА СОБСТВЕНИЯ ТИ КОМПЮТЪР (Р14-1)
+// YOUR STORE'S THEME, ON YOUR OWN COMPUTER
 // ═══════════════════════════════════════════════════════════════════════════
 //
-// ЗА КОГО Е ТОЗИ ФАЙЛ
-// ───────────────────
-// За СОБСТВЕНИКА НА МАГАЗИН, не за платформата. `scripts/temi.mjs` е съседният
-// файл и прави друго: той строи темите НА Sellanto, в монорепото, и завършва с
-// разгръщане. Този тук не пипа нито репото, нито сървъра — той говори с
-// публичното API на един магазин и качва файловете на ЕГО тема.
+// WHO THIS FILE IS FOR
+// ────────────────────
+// The STORE OWNER and their developer, not the platform. It touches neither
+// the Sellanto repository nor any server: it talks to one store's public API
+// and uploads the files of THAT store's theme.
 //
-// Единственият начин да стигнеш до тези файлове досега беше текстово поле в
-// админа, по един файл. Тоест човек със свой редактор, свой git и око върху
-// целия файл нямаше как да работи. Оттук има.
+// Until now the only way to reach those files was a text box in the admin,
+// one file at a time. Anyone with their own editor, their own git and an eye
+// on the whole file had no way to work. Now there is one.
 //
-// ⚠ КАЧЕНОТО НЕ Е ЖИВО. `push` и `watch` пишат в ЧЕРНОВА: витрината я показва
-// само на адреса с подписания ключ, който `preview` отпечатва. Клиентите на
-// магазина виждат старото, докато не кажеш `publish`. Това е нарочно — при
-// `watch` всяко натискане на Ctrl+S е заявка, включително върху полуписан
-// шаблон, а такова нещо не бива да стига до жив магазин.
+// ⚠ UPLOADED IS NOT LIVE. `push` and `watch` write to a DRAFT: the storefront
+// shows it only at the signed URL that `preview` prints. The store's customers
+// keep seeing the old version until you say `publish`. That is deliberate —
+// under `watch` every Ctrl+S is a request, including one over a half-written
+// template, and that must not reach a live store.
 //
-// КАК СЕ ПОДКАРВА
+// GETTING STARTED
 // ───────────────
-//   1. В админа: Настройки → API ключове → нов ключ с обхват `write_theme_code`
-//      („Запис · Код на темата"). ⚠ НЕ `write_content`: той е за блога и от
-//      Р14-1 насам НЕ дава право върху кода на темата, включително за заварени
-//      ключове — правата се смятат на всяка заявка, а не се пазят в реда.
-//      (Иска още право `themes.edit_code` и план, който има редактора на код.)
-//   2. Слагаш го като команда `sellanto` (или го викаш с `node` — работи и без):
+//   1. Install the command:
 //
 //        npm i -g github:sellanto/cli
 //
-//      ⚠ Инсталацията е от ХРАНИЛИЩЕТО, не от npm регистъра. Регистърът е още
-//      едно място, от което може да дойде различен файл; `selfupdate` пък тегли
-//      от САМИЯ МАГАЗИН, тоест командата се лекува сама срещу вярното API.
+//      ⚠ From the REPOSITORY, not from the npm registry. The registry is one
+//      more place a different file could come from; `selfupdate` pulls from
+//      THE STORE ITSELF, so the command heals itself against the API it talks
+//      to.
 //
-//   3. В папката, в която искаш темата:
+//   2. In the folder where you want the theme:
 //
-//        export SELLANTO_TOKEN="ключът"          # или го сложи в .sellanto.token
-//        sellanto init --api https://<магазинът> --store <public_id>
+//        sellanto login            # browser: pick a store and approve
 //        sellanto pull
 //
-//   4. Пишеш с каквото пишеш. После:
+//   3. Write with whatever you write with. Then:
 //
-//        sellanto watch            # качва при всяко запазване
-//        sellanto preview          # адресът, на който се вижда
-//        sellanto publish          # чак сега го виждат клиентите
+//        sellanto watch            # uploads on every save
+//        sellanto preview          # the URL where it shows
+//        sellanto publish          # only now do customers see it
 //
-// КОМАНДИТЕ
-// ─────────
-//   init      Записва `.sellanto.json` (адрес, магазин, версия на API-то).
-//   pull      Сваля темата в текущата папка — доставените файлове също.
-//   status    Какво се различава: локално, живо, в чернова.
-//   push      Качва разликите в черновата (веднъж).
-//   watch     Същото, но при всяко запазване на файл.
-//   preview   Пресен адрес за преглед на черновата (ключът живее час).
-//   publish   Черновата става жива — всички файлове наведнъж.
-//   discard   Изхвърля черновата. Живото не се пипа.
+// THE COMMANDS
+// ────────────
+//   login     Gets a key through the browser and writes it here.
+//   init      Writes `.sellanto.json` by hand (API address, store, version).
+//   use       Switches which theme you are working on.
+//   themes    Which themes this account may edit — including the shipped ones.
+//   pull      Downloads the theme into the current folder, delivered files too.
+//   status    What differs from what the store has.
+//   push      Uploads the differences into the draft.
+//   watch     The same, on every save.
+//   preview   The URL where the draft can be seen.
+//   publish   The draft becomes live.
+//   discard   Throws the draft away; the live files are untouched.
+//   diff      What you changed against the DELIVERED theme.
+//   conflicts Which of your files are copies of a file the platform has since
+//             changed.
+//   versions  The history of one file.
+//   restore   Puts a file back — to a numbered version, or to the theme's own.
+//   docs      Rewrites the reference and the agent brief under `.sellanto/`.
+//   selfupdate Replaces this file with the one the store serves.
 //
-// И четирите, които трябват, когато нещо е се счупило:
-//
-//   diff      Какво съм сменил спрямо ДОСТАВЕНАТА тема, ред по ред.
-//   conflicts Кои мои файла са копия на файл, който платформата е сменила
-//             оттогава. Без това работещият локално няма откъде да го научи.
-//   versions  Историята на един файл — всяко публикуване оставя следа.
-//   restore   Връща файл назад. ⚠ В ЧЕРНОВАТА — каналът има едно
-//             обещание и връщането НЕ е изключение. С `--publish` двата
-//             хода стават един, но се иска изрично.
-//
-// ⚠ БЕЗ НИТО ЕДНА ЗАВИСИМОСТ. Този файл се дава на търговец, който не иска да
-//   разбира какво е `npm install` — затова само вградени модули на Node.
+// ⚠ NOT ONE DEPENDENCY. This file is handed to a merchant who does not want to
+//   learn what `npm install` means — so, built-in Node modules only.
 
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
+import child from 'node:child_process';
 
 /**
- * ВЕРСИЯТА НА ИНСТРУМЕНТА — един източник.
+ * THE TOOL'S VERSION — one source.
  *
- * ⚠ РЕДЪТ СЕ ЧЕТЕ И ОТ ПЛАТФОРМАТА (`ThemeCliController::versionOf()`),
- * за да не съществува второ място с версията. Форматът му е договор:
- * `const VERSION = '…';` на свой ред, без отстъп.
+ * ⚠ THIS LINE IS ALSO READ BY THE PLATFORM (`ThemeCliController::versionOf()`),
+ * so that the version does not exist in two places. Its shape is a contract:
+ * `const VERSION = '…';` on its own line, no indentation.
  *
- * Стойността е дата, с `.N` при втора поправка в същия ден: `selfupdate`
- * сравнява НИЗОВЕ, тоест непроменена версия върху променен файл значи
- * „вече си на най-новото" пред човек, който държи стария текст.
+ * The value is a date, with `.N` for a second fix on the same day: `selfupdate`
+ * compares STRINGS, so an unchanged version over changed content means "you are
+ * already on the newest" told to someone holding the old text.
  */
-const VERSION = '2026-09-29.4';
+const VERSION = '2026-09-29.6';
 
 const CONFIG = '.sellanto.json';
 const TOKEN_FILE = '.sellanto.token';
 
-// Папките, които API-то изобщо признава (`ThemeCustomizations::DIRECTORIES`).
-// Тукашното копие е за ОБХОДА НА ДИСКА, а не второ правило: правилото е на
-// сървъра и отказва с име. Тук то само пази `watch` да не гледа `node_modules`.
+// The directories the API recognises at all (`ThemeCustomizations::DIRECTORIES`).
+// This copy exists for WALKING THE DISK, not as a second rule: the rule lives on
+// the server and refuses by name. Here it only keeps `watch` out of node_modules.
 const DIRECTORIES = [
   'layouts', 'templates', 'sections', 'snippets',
   'blocks', 'assets', 'locales', 'config',
@@ -104,23 +99,37 @@ const DIRECTORIES = [
 const EXTENSIONS = ['.twig', '.json', '.css', '.js', '.txt', '.md'];
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Дребните
+   Small things
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const say = (...a) => console.log(...a);
+/**
+ * ⚠ UNDER `--json`, PROSE GOES TO stderr AND ONLY THE PAYLOAD TO stdout.
+ *
+ * `--json` exists so an assistant does not have to parse prose. But the tool
+ * also says useful things along the way — "the store renders another theme",
+ * "a newer version exists" — and printed to stdout they land in front of the
+ * JSON, where `| jq` dies on the first line. Two streams is the answer Unix
+ * already has: a person reads both, a parser reads one.
+ */
+const MACHINE = process.argv.includes('--json');
+
+const say = (...a) => (MACHINE ? console.error(...a) : console.log(...a));
+
+/** The machine payload — always stdout, whatever else is going on. */
+const emit = (value) => process.stdout.write(JSON.stringify(value, null, 2) + '\n');
+
 const die = (m) => { console.error('\n  ✗ ' + m + '\n'); process.exit(1); };
 
 /**
- * КАК Е ПОВИКАН ИНСТРУМЕНТЪТ — за да го пише в съветите със същите думи.
+ * HOW THE TOOL WAS INVOKED — so its advice uses the same words.
  *
- * Три форми стигат дотук и трите са редовни: `sellanto` (сложен на PATH),
- * `./sellanto-theme.mjs` (изпълнимият бит и решетката отгоре) и
- * `node sellanto-theme.mjs`. Съвет, който казва третото на човек, написал
- * първото, е съвет, който не се копира — а точно за копиране е.
+ * Three forms reach here and all three are legitimate: `sellanto` (on PATH),
+ * `./sellanto-theme.mjs` (the executable bit and the shebang) and
+ * `node sellanto-theme.mjs`. Advice that prints the third to someone who typed
+ * the first is advice that cannot be copied — and copying is the whole point.
  *
- * ⚠ При глобална инсталация argv[1] е файлът В `node_modules`, не името на
- * обвивката, която npm е сложил на PATH. Затова се пита за папката, а не се
- * гледа само името.
+ * ⚠ For a global install argv[1] is the file INSIDE `node_modules`, not the
+ * shim npm put on PATH. So the folder is what gets asked, not just the name.
  */
 const ME = (() => {
   const self = process.argv[1] ?? '';
@@ -134,17 +143,16 @@ const ME = (() => {
   return /\.(mjs|cjs|js)$/.test(base) ? `node ${base}` : base;
 })();
 
-/** Един файл или много — „1 файла“ не е изречение на български. */
-const files = (n) => (n === 1 ? '1 файл' : `${n} файла`);
+const files = (n) => (n === 1 ? '1 file' : `${n} files`);
 
 const sha256 = (s) => crypto.createHash('sha256').update(s, 'utf8').digest('hex');
 
 /**
- * Записва настройката.
+ * Writes the settings.
  *
- * ⚠ Един писач, защото тук влизат и научени неща (темата, отпечатъкът
- * на справката, кога е проверена версията) — три мяста, които пишат файла,
- * са три повода едно от тях да изтрие чуждото поле.
+ * ⚠ One writer, because learned things land here too (the theme, the reference
+ * checksum, when the version was last checked). Three places writing the file
+ * are three chances for one of them to drop another one's field.
  */
 function saveConfig(cfg) {
   fs.writeFileSync(CONFIG, JSON.stringify(cfg, null, 2) + '\n', 'utf8');
@@ -152,34 +160,34 @@ function saveConfig(cfg) {
 
 function config() {
   if (!fs.existsSync(CONFIG)) {
-    die(`Няма ${CONFIG}. Пусни първо:\n     ${ME} init --api <адрес> --store <public_id>`);
+    die(`No ${CONFIG} here. Run this first:\n     ${ME} login`);
   }
 
   /*
-  | ⚠ ТОЗИ ФАЙЛ СЕ РЕДАКТИРА НА РЪКА — самата документация казва да се
-  | сложи `"autoUpdate": true` в него. Една забравена запетая и човекът
-  | виждаше SyntaxError със стек — тоест не разбираше, че грешката е негова
-  | и е на един знак разстояние.
+  | ⚠ THIS FILE GETS HAND-EDITED — the documentation itself says to put
+  | `"autoUpdate": true` in it. One forgotten comma and the person used to see a
+  | SyntaxError with a stack, so they could not tell the mistake was theirs and
+  | one character wide.
   */
   let raw;
 
   try {
     raw = JSON.parse(fs.readFileSync(CONFIG, 'utf8'));
   } catch (e) {
-    die(`${CONFIG} не е валиден JSON: ${e.message}`);
+    die(`${CONFIG} is not valid JSON: ${e.message}`);
   }
 
-  if (!raw.api || !raw.store) die(`${CONFIG} е без \`api\` или \`store\`.`);
+  if (!raw.api || !raw.store) die(`${CONFIG} has no \`api\` or no \`store\`.`);
 
   return { version: '2026-07', ...raw };
 }
 
 /**
- * Ключът — от средата или от файл, НИКОГА от `.sellanto.json`.
+ * The key — from the environment or from a file, NEVER from `.sellanto.json`.
  *
- * ⚠ Разделени са нарочно: `.sellanto.json` описва КЪДЕ се качва и влиза в git;
- * ключът е тайна и не бива да го последва там. Затова `init` записва и ред в
- * `.gitignore`.
+ * ⚠ Split on purpose: `.sellanto.json` describes WHERE things are uploaded and
+ * belongs in git; the key is a secret and must not follow it there. That is why
+ * `login` and `init` also write a line into `.gitignore`.
  */
 function token() {
   const fromEnv = process.env.SELLANTO_TOKEN;
@@ -187,32 +195,33 @@ function token() {
 
   if (fs.existsSync(TOKEN_FILE)) return fs.readFileSync(TOKEN_FILE, 'utf8').trim();
 
-  die(`Няма ключ. Сложи го в средата:\n     export SELLANTO_TOKEN="…"\n   или във файл ${TOKEN_FILE} (той не влиза в git).`);
+  die(`No key. Put it in the environment:\n     export SELLANTO_TOKEN="…"\n   or in the file ${TOKEN_FILE} (which stays out of git), or run \`${ME} login\`.`);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   API
+   The API
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
- * Едно повикване. Връща разбрания отговор или пада с ИЗРЕЧЕНИЕТО на отказа.
+ * One call. Returns the parsed response, or fails with the SENTENCE of the
+ * refusal.
  *
- * ⚠ ОТКАЗЪТ СЕ ЧЕТЕ, А НЕ СЕ СВЕЖДА ДО СТАТУС. Пликът на API-то носи `code`,
- * `message`, а при невалиден файл и `line` — тоест „ред 42: неочакван endfor“
- * може да се отпечата до пътя. „HTTP 422“ би пратило човека да чете логове.
- */
-/**
- * @param raw връща ТЕКСТА, а не разбран плик — само за самия инструмент,
- *            който е скрипт, а не JSON.
+ * ⚠ THE REFUSAL IS READ, NOT REDUCED TO A STATUS. The API envelope carries
+ * `code`, `message`, and for an invalid file a `line` — so "line 42: unexpected
+ * endfor" can be printed next to the path. "HTTP 422" would send the person off
+ * to read logs.
+ *
+ * @param raw returns the TEXT rather than a parsed envelope — only for the tool
+ *            itself, which is a script, not JSON.
  */
 function call(cfg, method, route, body, retried = false, raw = false) {
   /*
-  | Маршрут с водеща `/` е ИЗВЪН `stores/{id}/` — единственият такъв днес е
-  | `token`, от който се открива магазинът.
+  | A route with a leading `/` lives OUTSIDE `stores/{id}/`. Today that is
+  | `token`, from which the store is discovered, and `cli/token`.
   |
-  | ⚠ А НЕ `../token`: `new URL` нормализира пътя и броенето на точките
-  | става тиха загадка — едно ниво повече и заявката тръгва към
-  | `stores/token`, което е 404 без причина.
+  | ⚠ And not `../token`: `new URL` normalises the path, so counting the dots
+  | becomes a silent puzzle — one level too many and the request goes to
+  | `stores/token`, which is a 404 with no reason attached.
   */
   const base = `${cfg.api.replace(/\/$/, '')}/api/${cfg.version}`;
   const url = new URL(route.startsWith('/')
@@ -220,20 +229,20 @@ function call(cfg, method, route, body, retried = false, raw = false) {
     : `${base}/stores/${cfg.store}/${route}`);
 
   /*
-  | ⚠ БЕЗ HTTPS КЪМ ЧУЖД ХОСТ. Заглавието `Authorization` носи ключ с
-  | право да пише код на витрината. При `watch` то тръгва ПРИ ВСЯКО
-  | ЗАПАЗВАНЕ — тоест едно сгрешено `--api http://…` е стотици показвания
-  | на ключа в чист вид, без никой да е предупреден.
+  | ⚠ NO HTTPS, NO KEY, for any foreign host. The `Authorization` header carries
+  | a key allowed to write code onto the storefront. Under `watch` it leaves on
+  | EVERY SAVE — so one mistyped `--api http://…` is hundreds of cleartext
+  | exposures of that key, with nobody warned.
   |
-  | Лоопбекът е изключение, защото там няма мрежа, в която да се подслушва
-  | — и без него работата срещу свой `artisan serve` би била невъзможна.
+  | Loopback is the exception, because there is no network there to listen on —
+  | and without it, working against your own `artisan serve` would be impossible.
   */
   const local = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(url.hostname)
     || url.hostname.endsWith('.localhost')
     || url.hostname.endsWith('.test');
 
   if (url.protocol !== 'https:' && !local) {
-    die([`Ключът не тръгва по ${url.protocol} към ${url.hostname}.`, 'Смени `api` в .sellanto.json на https://'].join('\n   '));
+    die([`The key will not travel over ${url.protocol} to ${url.hostname}.`, 'Change `api` in .sellanto.json to https://'].join('\n   '));
   }
 
   const client = url.protocol === 'http:' ? http : https;
@@ -243,7 +252,13 @@ function call(cfg, method, route, body, retried = false, raw = false) {
     const request = client.request(url, {
       method,
       headers: {
-        Authorization: `Bearer ${token()}`,
+        /*
+        | ⚠ EXACTLY ONE CALL IN THE WHOLE TOOL GOES WITHOUT A KEY: the one that
+        | FETCHES the key (`login`). Everywhere else a missing key is an error
+        | and `token()` exits with a sentence — so the exception is a field on
+        | the settings object, not a silent fallback.
+        */
+        ...(cfg.anonymous === true ? {} : { Authorization: `Bearer ${token()}` }),
         Accept: 'application/json',
         ...(payload ? { 'Content-Type': 'application/json', 'Content-Length': payload.length } : {}),
       },
@@ -253,36 +268,39 @@ function call(cfg, method, route, body, retried = false, raw = false) {
       response.on('end', () => {
         const text = Buffer.concat(chunks).toString('utf8');
         let parsed = null;
-        try { parsed = JSON.parse(text); } catch { /* пликът може да е празен */ }
+        try { parsed = JSON.parse(text); } catch { /* the envelope may be empty */ }
 
         if (response.statusCode >= 200 && response.statusCode < 300) {
           return resolve(raw ? text : (parsed?.data ?? parsed));
         }
 
         /*
-        | ⚠ 429 НЕ Е ГРЕШКА, А ТЕМПО — И НЕ Е В ОБИЧАЙНИЯ ПЛИК.
+        | ⚠ 429 IS NOT AN ERROR, IT IS A PACE — AND IT IS NOT IN THE USUAL
+        | ENVELOPE.
         |
-        | Таванът по подразбиране е 40 заявки в минута НА АКАУНТ
-        | (`storefront.api.rpm_fallback`), а една тема има стотица файла — тоест
-        | първият `pull` ГАРАНТИРАНО удря тавана. Без този клон свалянето
-        | на тема просто пропуска две трети от файловете с червени редове.
+        | The default ceiling is 40 requests per minute PER ACCOUNT
+        | (`storefront.api.rpm_fallback`), and one theme has about a hundred
+        | files — so the first `pull` is GUARANTEED to hit it. Without this
+        | branch, downloading a theme simply skipped two thirds of the files
+        | with red lines.
         |
-        | Отказът носи `retry_after` в КОРЕНА на тялото (друга форма от
-        | плика на ресурсните откази) и заглавие `Retry-After`. Изчаква се
-        | точно толкова и се опитва пак — веднъж, не вечно: второ 429 след
-        | изчакване значи чужд клиент на същия акаунт, а не наше темпо.
+        | The refusal carries `retry_after` at the ROOT of the body (a different
+        | shape from the envelope used for resource refusals) and a `Retry-After`
+        | header. We wait exactly that long and try again — once, not forever: a
+        | second 429 after waiting means another client on the same account, not
+        | our own pace.
         */
         if (response.statusCode === 429 && !retried) {
           const wait = Number(response.headers['retry-after'] ?? parsed?.retry_after ?? 5);
 
-          say(`  … таванът на заявките е ударен, изчаквам ${wait}s`);
+          say(`  … rate limit hit, waiting ${wait}s`);
 
           /*
-          | ⚠ И `raw` СЕ ПРЕНАСЯ. Без него повторният опит разбира
-          | отговора като JSON — а единственият `raw` адрес днес раздава
-          | САМИЯ ИНСТРУМЕНТ, тоест `selfupdate` под ударен таван виждаше
-          | `null` и казваше „платформата не даде инструмента“ — лъжливо изречение
-          | точно в мига, в който обновяването има значение.
+          | ⚠ `raw` TRAVELS ALONG TOO. Without it the retry parses the response
+          | as JSON — and the only `raw` route today serves THE TOOL ITSELF, so
+          | `selfupdate` under a hit ceiling saw `null` and said "the platform
+          | did not return the tool": a false sentence at exactly the moment the
+          | update mattered.
           */
           return void setTimeout(
             () => call(cfg, method, route, body, true, raw).then(resolve, reject),
@@ -291,7 +309,7 @@ function call(cfg, method, route, body, retried = false, raw = false) {
         }
 
         const error = parsed?.errors?.[0] ?? (parsed?.code ? parsed : null);
-        const where = error?.line ? ` (ред ${error.line})` : '';
+        const where = error?.line ? ` (line ${error.line})` : '';
         const detail = error?.detail ? ` — ${error.detail}` : '';
 
         reject(new Error(
@@ -310,10 +328,10 @@ const remote = (cfg, method, suffix, body) =>
   call(cfg, method, `themes/${cfg.theme}/${suffix}`, body);
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Дискът
+   The disk
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/** Всички файлове на темата в текущата папка — път → съдържание. */
+/** Every theme file in the current folder — path → contents. */
 function localFiles() {
   const found = new Map();
 
@@ -327,10 +345,10 @@ function localFiles() {
         if (entry.isDirectory()) { walk(full); continue; }
 
         /*
-        | ⚠ САМО ИСТИНСКИ ФАЙЛОВЕ. Symlink не е нито папка, нито отсеян
-        | от разширението — тоест тема, взета от трета страна с
-        | `sections/logo.json -> ~/.aws/credentials`, би качила това в базата на
-        | платформата при първия `push`, без никой да го е поискал.
+        | ⚠ REAL FILES ONLY. A symlink is neither a directory nor filtered out
+        | by its extension — so a theme taken from a third party carrying
+        | `sections/logo.json -> ~/.aws/credentials` would upload that into the
+        | platform's database on the first `push`, with nobody having asked.
         */
         if (!entry.isFile()) continue;
         if (!EXTENSIONS.includes(path.extname(entry.name).toLowerCase())) continue;
@@ -346,17 +364,17 @@ function localFiles() {
 }
 
 /**
- * Път, дошъл ОТ СЪРВЪРА — валиден ли е за запис ТУК.
+ * A path that came FROM THE SERVER — is it valid to write HERE.
  *
- * ⚠ НЕ СЕ ДОВЕРЯВАМЕ НА СЪРВЪРА, И ТОВА НЕ Е НЕДОВЕРИЕ КЪМ ХОРАТА.
- * `pull` взима имената на файловете от плика и пише по тях с правата на
- * човека, който го е пуснал. Отговор `{"path": "../../../../.ssh/authorized_keys"}`
- * — от сбъркан адрес, подменен DNS или човек посредата — би писал извън
- * папката. Сървърът вече пази СЕБЕ СИ със същия бял списък; това тук
- * пази МАШИНАТА НА ТЪРГОВЕЦА, която е друга граница.
+ * ⚠ WE DO NOT TRUST THE SERVER, AND THAT IS NOT DISTRUST OF PEOPLE. `pull`
+ * takes file names out of the envelope and writes to them with the permissions
+ * of whoever ran it. A response of `{"path": "../../../../.ssh/authorized_keys"}`
+ * — from a mistyped address, a poisoned DNS answer or someone in between —
+ * would write outside the folder. The server already protects ITSELF with the
+ * same allowlist; this protects THE MERCHANT'S MACHINE, which is another border.
  *
- * Три проверки, същите като на сървъра, плюс задържане по РАЗРЕШЕН път:
- * низът може да изглежда невинен и все пак да сочи навън.
+ * Three checks, the same as the server's, plus containment by RESOLVED path:
+ * a string can look innocent and still point outwards.
  */
 function safeRelative(relative) {
   if (typeof relative !== 'string' || relative === '' || relative.includes('\0')) return null;
@@ -377,7 +395,7 @@ function write(relative, content) {
   const safe = safeRelative(relative);
 
   if (safe === null) {
-    say(`  ✗ пропуснат път от сървъра: ${relative}`);
+    say(`  ✗ path from the server skipped: ${relative}`);
 
     return false;
   }
@@ -389,19 +407,285 @@ function write(relative, content) {
   return true;
 }
 
+/**
+ * The key must not follow the settings into git.
+ *
+ * ⚠ And `.sellanto/` too — a GENERATED reference lives there and is rewritten
+ * on every `pull`. Let it into git and every run produces a commit with no
+ * content, burying the real change to the theme under the noise.
+ *
+ * ⚠ A function, not two copies: `init` and `login` do the same thing, and two
+ * copies of one rule are one chance for one of them to forget `.sellanto/`.
+ */
+function ignore(want) {
+  const have = fs.existsSync('.gitignore') ? fs.readFileSync('.gitignore', 'utf8') : '';
+  const missing = want.filter((one) => !have.includes(one));
+
+  if (missing.length === 0) return;
+
+  fs.writeFileSync(
+    '.gitignore',
+    `${have}${have.endsWith('\n') || have === '' ? '' : '\n'}${missing.join('\n')}\n`,
+    'utf8',
+  );
+
+  say(`  ✓ .gitignore ← ${missing.join(', ')}`);
+}
+
 /* ═══════════════════════════════════════════════════════════════════════════
-   Командите
+   Signing in with a browser
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Where a store gets picked — the only place that knows which ones there are. */
+const CONNECT = 'https://sellanto.com/en/dashboard/cli';
+
+/**
+ * Fetches a key without the person transcribing anything.
+ *
+ * =========================================================================
+ * FOUR STEPS, THREE PROGRAMS, AND THE SECRET PASSES THROUGH ONE
+ * =========================================================================
+ *   1. HERE a secret is invented and a tiny server comes up on `127.0.0.1`.
+ *      The platform does not yet know anyone wants a key.
+ *   2. The browser goes to the dashboard, the person picks a store and approves.
+ *   3. The store sends the browser back to `127.0.0.1` — carrying only "done".
+ *   4. HERE the key is collected over a SECOND connection, with that same secret.
+ *
+ * ⚠ THE SECRET NEVER PASSES THROUGH THE BROWSER, and that is the whole
+ * difference from "copy the key off the screen". Only its hash travels there.
+ * So the URL the person sees, and which lands in their history, is not enough
+ * to obtain a key (PKCE, RFC 7636).
+ *
+ * ⚠ AND THE CODE IS PRINTED BEFORE THE BROWSER OPENS. It is the fence against
+ * the one attack cryptography cannot help with: a lured URL the person approves
+ * themselves. The screen on the other side shows the same characters — if they
+ * do not match, they are approving someone else's request.
+ */
+async function login(args) {
+  const base = flag(args, '--connect') ?? CONNECT;
+
+  // The secret that stays HERE. 64 hex characters = 32 bytes of randomness.
+  const verifier = crypto.randomBytes(32).toString('hex');
+  const requestId = crypto.randomBytes(24).toString('base64url');
+  const state = crypto.randomBytes(12).toString('base64url');
+  const challenge = sha256(verifier);
+  const code = userCode(requestId);
+
+  const server = await listen();
+
+  /*
+  | ⚠ BUILT WITH `URL`, NOT BY GLUING STRINGS. The connect address may already
+  | carry a question mark (another locale, another deployment, a test) — and a
+  | glued `?request=` then makes a second question mark, which is a request the
+  | far side cannot see while the tool waits five minutes.
+  */
+  const url = new URL(base);
+
+  url.searchParams.set('request', requestId);
+  url.searchParams.set('challenge', challenge);
+  url.searchParams.set('state', state);
+  url.searchParams.set('port', String(server.port));
+
+  say('');
+  say(`  Verification code:  ${code}`);
+  say('');
+  say('  Opening the browser. There: pick a store → check the code matches → Approve.');
+  say(`  If it does not open by itself: ${url.href}`);
+  say('');
+
+  /*
+  | ⚠ `--no-open` IS NOT ONLY FOR TESTS. A machine with no desktop — a server, a
+  | container, an ssh session — has nothing to open, and the address is already
+  | printed. The flag makes the silent behaviour explicit.
+  */
+  if (!args.includes('--no-open')) open(url.href);
+
+  const back = await server.wait(state);
+
+  if (back === null) {
+    die('No approval arrived within 5 minutes. Run the command again.');
+  }
+
+  if (back.denied) {
+    die('Refused on the approval screen. Nothing was written.');
+  }
+
+  say('  … approved, collecting the key');
+
+  /*
+  | ⚠ THE KEY IS ASKED FOR WITH THE SECRET, NOT WITH THE REQUEST ID. The id was
+  | in the URL — so in the browser history and in the log of every proxy along
+  | the way. The secret has never left this process.
+  */
+  const got = await exchange(back.api, requestId, verifier);
+
+  if (got === null) {
+    die('The approval was not accepted. It may have expired (two minutes) or already been collected.');
+  }
+
+  /*
+  | ⚠ THE KEY GOES INTO A FILE, NOT INTO A MESSAGE ON SCREEN. Printed, it lands
+  | in the terminal scrollback and in the shell history — two places it does not
+  | leave. The file, meanwhile, goes into `.gitignore` right here.
+  */
+  fs.writeFileSync(TOKEN_FILE, got.token + '\n', { encoding: 'utf8', mode: 0o600 });
+
+  const cfg = fs.existsSync(CONFIG) ? JSON.parse(fs.readFileSync(CONFIG, 'utf8')) : {};
+
+  saveConfig({ ...cfg, api: back.api, store: got.store, version: cfg.version ?? '2026-07' });
+  ignore([TOKEN_FILE, HOME + '/']);
+
+  say('');
+  say(`  ✓ Connected to ${back.api}`);
+  say(`  ✓ The key is in ${TOKEN_FILE} (kept out of git)`);
+  say('');
+  say(`  Now: ${ME} pull`);
+  say('');
+}
+
+/** The characters the approval screen computes too — derived from the id. */
+function userCode(requestId) {
+  const alphabet = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
+  const digest = crypto.createHash('sha256').update('sellanto-cli-user-code:' + requestId, 'utf8').digest();
+
+  let out = '';
+
+  for (let at = 0; at < 8; at++) {
+    out += alphabet[digest[at] % alphabet.length];
+
+    if (at === 3) out += '-';
+  }
+
+  return out;
+}
+
+/**
+ * The tiny server that waits for the browser.
+ *
+ * ⚠ ON `127.0.0.1` ONLY, not on `0.0.0.0`. The second would mean anyone on the
+ * same network — a café, an office, an airport — could post an approval to this
+ * port.
+ *
+ * ⚠ AND THE PORT IS RANDOM (0 = pick a free one). A fixed port would mean two
+ * folders cannot connect at once, and that a stray page in the browser knows
+ * where to knock.
+ */
+function listen() {
+  return new Promise((resolve, reject) => {
+    let settle = null;
+
+    const server = http.createServer((request, response) => {
+      const url = new URL(request.url, 'http://127.0.0.1');
+
+      if (url.pathname !== '/callback') {
+        response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+
+        return response.end('no such address');
+      }
+
+      const out = {
+        state: url.searchParams.get('state') ?? '',
+        api: url.searchParams.get('api') ?? '',
+        denied: url.searchParams.get('denied') === '1',
+      };
+
+      response.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      response.end(page(out.denied));
+
+      if (settle) settle(out);
+    });
+
+    server.on('error', reject);
+
+    server.listen(0, '127.0.0.1', () => {
+      resolve({
+        port: server.address().port,
+
+        /*
+        | ⚠ `state` IS CHECKED, NOT ACCEPTED. The port is open to everything on
+        | this machine; a stray page in the browser can request
+        | `http://127.0.0.1:<port>/callback?api=https://somewhere-else`. Without
+        | the check the tool would go and ask that host for a key — and send it
+        | its secret.
+        */
+        wait: (expected) => new Promise((done) => {
+          const timer = setTimeout(() => { server.close(); done(null); }, 5 * 60 * 1000);
+
+          settle = (out) => {
+            if (out.state !== expected) return;
+
+            clearTimeout(timer);
+            server.close();
+            done(out);
+          };
+        }),
+      });
+    });
+  });
+}
+
+/** The page the person sees in the browser once they are back. */
+function page(denied) {
+  const title = denied ? 'Refused' : 'Done';
+  const text = denied
+    ? 'Nothing was connected. You can close this tab.'
+    : 'The tool has the key. Go back to your terminal — you can close this tab.';
+
+  return '<!doctype html><html lang="en"><meta charset="utf-8">'
+    + '<meta name="viewport" content="width=device-width,initial-scale=1">'
+    + `<title>${title} · Sellanto</title>`
+    + '<body style="margin:0;display:grid;place-items:center;min-height:100vh;'
+    + 'font:16px/1.5 system-ui,sans-serif;color:#111;background:#fff">'
+    + '<main style="max-width:32rem;padding:1.5rem;text-align:center">'
+    + `<h1 style="font-size:1.25rem;margin:0 0 .5rem">${title}</h1><p>${text}</p></main>`;
+}
+
+/** The secret for the key — over a second connection, in a body, not a URL. */
+async function exchange(api, requestId, verifier) {
+  const out = await call(
+    { api, version: '2026-07', store: '_', anonymous: true },
+    'POST',
+    '/cli/token',
+    { request_id: requestId, code_verifier: verifier },
+  ).catch((e) => { say(`  ✗ ${e.message}`); return null; });
+
+  if (out === null || typeof out.token !== 'string' || out.token === '') return null;
+
+  return { token: out.token, store: String(out.store ?? '') };
+}
+
+/**
+ * Opens the browser — and does NOT fail when there is none.
+ *
+ * The address is already printed above; a machine with no desktop (a server, a
+ * container, an ssh session) has to be able to open it elsewhere. So there is
+ * no success check here: this is a convenience, not a step.
+ */
+function open(url) {
+  const [command, args] = process.platform === 'win32'
+    ? ['cmd', ['/c', 'start', '', url]]
+    : process.platform === 'darwin'
+      ? ['open', [url]]
+      : ['xdg-open', [url]];
+
+  try {
+    child.spawn(command, args, { stdio: 'ignore', detached: true }).unref();
+  } catch { /* no browser: the address is printed */ }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   The commands
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /**
- * Кой е магазинът, ако човекът не го е казал.
+ * Which store, when the person did not say.
  *
- * ⚠ АДРЕСИТЕ ИСКАТ `public_id` (ULID), А ТОЙ НЕ СЕ ПОКАЗВА НИКЪДЕ В АДМИНА
- * (проверено). Без това откриване единственият начин да подкараш CLI-я е
- * някой да прочете базата — тоест търговец не може да го подкара сам.
+ * ⚠ THE ADDRESSES WANT `public_id` (a ULID), AND IT IS SHOWN NOWHERE IN THE
+ * ADMIN (measured). Without this discovery the only way to start the CLI would
+ * be for somebody to read the database — so a merchant could not start it alone.
  *
- * Един магазин — взима се сам. Повече — изброяват се, защото качване в
- * ПОГРЕШНИЯ магазин е видимо от клиенти — гадането тук не е удобство.
+ * One store, take it. More than one, list them: uploading into the WRONG store
+ * is visible to customers, so guessing here is not a convenience.
  */
 async function discover(cfg) {
   const me = await call({ ...cfg, store: '_' }, 'GET', '/token?include=stores').catch(() => null);
@@ -411,7 +695,7 @@ async function discover(cfg) {
   if (!Array.isArray(stores) || stores.length === 0) return null;
   if (stores.length === 1) return stores[0].id;
 
-  say('  Ключът стига до повече от един магазин — кажи кой с --store:');
+  say('  The key reaches more than one store — say which with --store:');
   for (const one of stores) say(`    ${one.id}  ${one.name}`);
 
   return null;
@@ -421,58 +705,85 @@ async function init(args) {
   const api = flag(args, '--api');
   const version = flag(args, '--version') ?? '2026-07';
 
-  if (!api) die('Искам --api <адрес на магазина>.');
+  if (!api) die('I need --api <the store address>.');
 
   const theme = flag(args, '--theme');
   const store = flag(args, '--store') ?? await discover({ api, version });
 
   if (!store) {
-    die('Не можах да позная магазина. Добави --store <public_id> от списъка отгоре.');
+    die('I could not work out the store. Add --store <public_id> from the list above.');
   }
 
   saveConfig(theme ? { api, store, version, theme } : { api, store, version });
   say(`  ✓ ${CONFIG}`);
 
-  // ⚠ Ключът не бива да последва конфигурацията в git.
-  const ignore = fs.existsSync('.gitignore') ? fs.readFileSync('.gitignore', 'utf8') : '';
+  ignore([TOKEN_FILE, HOME + '/']);
 
-  /*
-  | ⚠ И `.sellanto/` — там живее ГЕНЕРИРАНА справка, която се презаписва
-  | при всяко `pull`. Влезе ли в git, всеки пробег прави комит без съдържание,
-  | а истинската промяна в темата се губи под шума.
-  */
-  const want = [TOKEN_FILE, HOME + '/'].filter((one) => !ignore.includes(one));
-
-  if (want.length > 0) {
-    fs.writeFileSync(
-      '.gitignore',
-      `${ignore}${ignore.endsWith('\n') || ignore === '' ? '' : '\n'}${want.join('\n')}\n`,
-      'utf8',
-    );
-
-    say(`  ✓ .gitignore ← ${want.join(', ')}`);
-  }
-
-  say(`\n  Сега: ${ME} pull\n`);
+  say(`\n  Now: ${ME} pull\n`);
 }
 
-/** Темата, както я вижда магазинът в момента — включително доставените файлове. */
-/** Колко пътя влизат в една групова заявка — съвпада с `MAX_BATCH` на сървъра. */
+/**
+ * Switches which theme is being worked on.
+ *
+ * ⚠ WHY THIS EXISTS AT ALL. Until now the only way to change theme was to run
+ * `init` again — which rewrites the whole settings file, including the
+ * reference checksum and the last version check. A command whose name is
+ * "initialise" is the wrong tool for "I want to look at another theme", and
+ * people who are told to run it twice eventually run it with the wrong `--api`.
+ *
+ * ⚠ AND IT DOES NOT PULL. Switching the theme and downloading it are two
+ * decisions: the folder may already hold uncommitted work on the previous one.
+ */
+async function use(cfg, args = []) {
+  const wanted = args.find((one) => !one.startsWith('--'));
+
+  if (!wanted) die(`I need the theme: ${ME} use <slug>   (see: ${ME} themes)`);
+
+  const out = await call(cfg, 'GET', 'themes').catch(() => null);
+  const known = (out?.themes ?? []).find((one) => one.theme === wanted);
+
+  if (!known) {
+    die([`This account may not edit \`${wanted}\`.`, `The ones it may: ${ME} themes`].join('\n   '));
+  }
+
+  if (known.ready !== true) {
+    die(`\`${wanted}\` is listed but has no files yet — there is nothing to download.`);
+  }
+
+  /*
+  | The reference belongs to the theme, so its checksum is dropped: keeping it
+  | would mean the next `pull` decides "unchanged" and leaves the reference of
+  | the PREVIOUS theme next to the new files.
+  */
+  const { referenceChecksum: _drop, ...rest } = cfg;
+
+  saveConfig({ ...rest, theme: wanted });
+
+  say(`  ✓ Now working on ${wanted}${known.active ? ' (the store runs it)' : ''}`);
+
+  if (known.active !== true) {
+    say('  ⚠ The storefront runs another theme, so `preview` will not show this work.');
+  }
+
+  say(`\n  Next: ${ME} pull\n`);
+}
+
+/** How many paths go into one batched request — matches `MAX_BATCH` on the server. */
 const BATCH = 60;
 
-/** Колко БАЙТОВЕ съдържание се пращат наведнъж — съвпада с `MAX_BATCH_BYTES`. */
+/** How many BYTES of content are sent at once — matches `MAX_BATCH_BYTES`. */
 const BATCH_BYTES = 4 * 1024 * 1024;
 
 /**
- * Разделя списък на партиди — ПО БРОЙ И ПО БАЙТОВЕ.
+ * Splits a list into batches — BY COUNT AND BY BYTES.
  *
- * ⚠ БРОЯТ САМ НЕ СТИГА. Шестдесет обикновени шаблона са няколкостотин
- * килобайта, но шест големи `theme.css` са над тавана на сървъра — и
- * цялата партида се отказва с `batch_too_large`. Клиент, който реже само
- * по брой, прави заявка, за която знае предварително, че ще бъде отказана.
+ * ⚠ COUNT ALONE IS NOT ENOUGH. Sixty ordinary templates are a few hundred
+ * kilobytes, but six large `theme.css` files are over the server's ceiling —
+ * and then the whole batch is refused with `batch_too_large`. A client that
+ * splits only by count makes a request it already knows will be refused.
  *
- * ⚠ Първият ред влиза винаги: файл, по-голям от партидата, все пак
- * трябва да бъде опитан — сървърът ще каже дали е допустим.
+ * ⚠ The first row always goes in: a file larger than the batch still has to be
+ * attempted — the server will say whether it is allowed.
  */
 const batches = (list, size = BATCH) => {
   const out = [];
@@ -498,11 +809,11 @@ const batches = (list, size = BATCH) => {
 };
 
 /**
- * Темата, както я вижда магазинът — включително доставените файлове.
+ * The theme as the store sees it — including the delivered files.
  *
- * ⚠ НА ПАРТИДИ, А НЕ ФАЙЛ ПО ФАЙЛ. Таванът е 40 заявки в минута на
- * акаунт, а Aurora има 105 редактируеми файла — един файл на заявка
- * значи, че първата стъпка на канала не може да завърши. Сега са две-три.
+ * ⚠ IN BATCHES, NOT FILE BY FILE. The ceiling is 40 requests per minute per
+ * account and Aurora has 105 editable files — one file per request means the
+ * channel's very first step cannot finish. Now it is two or three.
  */
 async function pull(cfg) {
   const listing = await index(cfg);
@@ -511,16 +822,16 @@ async function pull(cfg) {
   let skipped = 0;
 
   for (const file of listing.files) {
-    // Надгробен камък: локално това значи „файлът го няма“.
+    // A tombstone: locally this means "the file is not there".
     if (file.state === 'draft_removed') continue;
 
     /*
-    | ⚠ ПЪТЯТ СЕ ПРОВЕРЯВА ПРЕДИ ЗАЯВКАТА. Той идва от плика, тоест е
-    | ВХОД отвън — сървър със сбъркан адрес, подменен DNS или човек
-    | посредата може да поиска запис извън папката.
+    | ⚠ THE PATH IS CHECKED BEFORE THE REQUEST. It comes out of the envelope, so
+    | it is INPUT from outside — a mistyped address, a poisoned DNS answer or
+    | someone in between could ask for a write outside the folder.
     */
     if (safeRelative(file.path) === null) {
-      say(`  ✗ пропуснат път от сървъра: ${file.path}`);
+      say(`  ✗ path from the server skipped: ${file.path}`);
       skipped++;
 
       continue;
@@ -534,8 +845,8 @@ async function pull(cfg) {
   for (const part of batches(wanted)) {
     let rest = part;
 
-    // Байтовият таван на сървъра може да върне ПО-МАЛКО от поисканото
-    // (`truncated`) — тогава остатъкът се иска пак, а не се губи.
+    // The server's byte ceiling can return LESS than was asked for
+    // (`truncated`) — then the remainder is asked for again, not lost.
     while (rest.length > 0) {
       const out = await remote(cfg, 'POST', 'files/read', { paths: rest });
       const got = Array.isArray(out.files) ? out.files : [];
@@ -548,49 +859,68 @@ async function pull(cfg) {
 
       rest = out.truncated ? rest.filter((path) => !done.has(path)) : [];
 
-      // Без това сървър, който каже `truncated` без да е дал нито един файл,
-      // би въртял вечно.
+      // Without this, a server that says `truncated` while returning no files
+      // at all would spin forever.
       if (out.truncated && got.length === 0) break;
 
       say(`  … ${written}/${wanted.length}`);
     }
   }
 
-  if (skipped > 0) say(`  (пропуснати ${skipped})`);
+  if (skipped > 0) say(`  (${skipped} skipped)`);
 
   /*
-  | ⚠ И СПРАВКАТА, ЗАЕДНО С ФАЙЛОВЕТЕ. Човек, който току-що е свалил
-  | тема, седа да пише Twig в пясъчник, за който не знае нищо. Справка,
-  | която се иска с отделна команда, се чете след първия бял екран, не преди.
+  | ⚠ AND THE REFERENCE, ALONGSIDE THE FILES. Someone who has just downloaded a
+  | theme sits down to write Twig in a sandbox they know nothing about. A
+  | reference that needs a separate command gets read after the first blank
+  | screen, not before it.
   */
   await refreshReference(cfg);
 
-  say(`  ✓ ${files(written)} в ${process.cwd()}`);
-  say(`\n  Темата е ${listing.theme}. Пиши, после: ${ME} watch\n`);
+  say(`  ✓ ${files(written)} in ${process.cwd()}`);
+  say(`\n  The theme is ${listing.theme}. Write, then: ${ME} watch\n`);
 }
 
-/** Какво се различава — без да качва нищо. */
-async function status(cfg) {
+/** What differs — without uploading anything. */
+async function status(cfg, args = []) {
   const { changed, removed, listing } = await changes(cfg);
 
   /*
-  | ⚠ И ЗА ИЗОСТАНАЛИТЕ — тук, а не с отделна команда, която никой няма
-  | да се сети да пусне. Това е единственият начин човек с папка на своя
-  | компютър да разбере, че копието му е от файл, сменен от платформата.
+  | ⚠ AND THE STALE ONES, HERE, rather than behind a separate command nobody
+  | will think to run. This is the only way someone with a folder on their own
+  | computer learns that their copy came from a file the platform has changed.
   |
-  | ⚠ И НЕ СПИРА `status`, ако адресът го няма: стар сървър без този
-  | адрес не бива да прави основната команда неизползваема.
+  | ⚠ AND IT DOES NOT STOP `status` when the address is missing: an older store
+  | without it must not make the main command unusable.
   */
   const behind = await remote(cfg, 'GET', 'conflicts').catch(() => null);
 
-  if (behind !== null && behind.stale > 0) {
-    say(`  ⚠ ${files(behind.stale)} ${behind.stale === 1 ? 'е изостанал' : 'са изостанали'} от темата — виж: conflicts`);
+  /*
+  | ⚠ `--json` IS FOR AGENTS, NOT FOR PEOPLE. An assistant driving this tool
+  | otherwise has to parse prose that changes with every wording fix — and it
+  | parses it wrong silently. One stable shape costs a branch here and removes a
+  | whole class of guesswork.
+  */
+  if (args.includes('--json')) {
+    emit({
+      theme: listing.theme,
+      changed: changed.map(([route, why]) => ({ path: route, state: why.trim() === 'new' ? 'new' : 'changed' })),
+      removed,
+      draft_files: listing.draft?.files ?? 0,
+      stale: behind?.stale ?? null,
+    });
+
+    return;
   }
 
-  for (const route of removed) say(`  изтрит  ${route}`);
+  if (behind !== null && behind.stale > 0) {
+    say(`  ⚠ ${files(behind.stale)} ${behind.stale === 1 ? 'is' : 'are'} behind the theme — see: conflicts`);
+  }
+
+  for (const route of removed) say(`  deleted  ${route}`);
 
   if (changed.length === 0 && removed.length === 0) {
-    say(`  ✓ Няма разлики. ${listing.draft.files === 0 ? 'Черновата е празна.' : `В черновата чака${listing.draft.files === 1 ? '' : 'т'} ${files(listing.draft.files)}.`}`);
+    say(`  ✓ No differences. ${listing.draft.files === 0 ? 'The draft is empty.' : `${files(listing.draft.files)} waiting in the draft.`}`);
 
     return;
   }
@@ -599,41 +929,41 @@ async function status(cfg) {
 
   if (changed.length === 0) return;
 
-  say(`\n  ${files(changed.length)} за качване. Пусни: ${ME} push`);
+  say(`\n  ${files(changed.length)} to upload. Run: ${ME} push`);
 }
 
-/** Качва разликите веднъж. */
+/** Uploads the differences once. */
 async function push(cfg, args = []) {
   const { changed, removed, local } = await changes(cfg);
   const alsoDelete = args.includes('--delete');
 
   /*
-  | ⚠ ИЗТРИТИТЕ СЕ КАЗВАТ ВИНАГИ, А НЕ САМО КОГАТО НЯМА ДРУГО.
+  | ⚠ DELETIONS ARE ALWAYS MENTIONED, not only when there is nothing else.
   |
-  | Човек, който е изтрил една секция И е поправил друга, виждаше само
-  | второто — и оставаше с убеждението, че изтритото е заминало. Открива
-  | се най-рано при `publish`, тоест пред купувачи.
+  | Someone who deleted one section AND fixed another used to see only the
+  | second — and walked away believing the deletion had gone through. It gets
+  | discovered at `publish` at the earliest, which is in front of customers.
   */
   if (removed.length > 0 && !alsoDelete) {
-    for (const route of removed) say(`  изтрит  ${route}`);
-    say(`  липсва${removed.length === 1 ? '' : 'т'} локално: ${files(removed.length)}. За да се махнат и от магазина: push --delete`);
+    for (const route of removed) say(`  deleted  ${route}`);
+    say(`  missing locally: ${files(removed.length)}. To remove them from the store too: push --delete`);
   }
 
   if (changed.length === 0 && (removed.length === 0 || !alsoDelete)) {
-    if (removed.length === 0) say('  ✓ Няма какво да се качи.');
+    if (removed.length === 0) say('  ✓ Nothing to upload.');
 
     return;
   }
 
   /*
-  | ⚠ ЕДИН ЗАПИС ЗА ДО ШЕСТДЕСЕТ ФАЙЛА, А НЕ ПО ЕДИН.
+  | ⚠ ONE WRITE FOR UP TO SIXTY FILES, NOT ONE EACH.
   |
-  | Същата причина като при `pull`: таванът е 40 заявки в минута. Първо
-  | качване на пренесена тема е стотица файла; един на заявка значи, че
-  | то не може да стане без няколко минути чакане.
+  | Same reason as `pull`: the ceiling is 40 requests per minute. A first upload
+  | of a ported theme is a hundred files; one per request means it cannot happen
+  | without minutes of waiting.
   |
-  | ⚠ И ИЗТРИВАНЕТО Е В СЪЩАТА ЗАЯВКА (`content: null`), затова десет
-  | изтрити файла не са десет заявки.
+  | ⚠ AND DELETION RIDES THE SAME REQUEST (`content: null`), so ten deleted
+  | files are not ten requests.
   */
   const payload = [
     ...changed.map(([route]) => ({ path: route, content: local.get(route) })),
@@ -658,11 +988,11 @@ async function push(cfg, args = []) {
     }
 
     /*
-    | ⚠ ОТКАЗЪТ НОСИ РЕДА, и това е целият смисъл на канала. „Не стана“
-    | върху файл от двеста реда не помага на никого.
+    | ⚠ THE REFUSAL CARRIES THE LINE, and that is the whole point of the
+    | channel. "It did not work" over a two-hundred-line file helps nobody.
     */
     for (const one of out.refused ?? []) {
-      const where = one.line ? ` (ред ${one.line})` : '';
+      const where = one.line ? ` (line ${one.line})` : '';
       const why = one.detail ? `: ${one.detail}` : '';
 
       say(`  ✗ ${one.path}${where} — ${one.reason}${why}`);
@@ -671,55 +1001,48 @@ async function push(cfg, args = []) {
   }
 
   /*
-  | ⚠ ОТКАЗАН ФАЙЛ Е НЕУСПЕХ И ЗА ИЗХОДНИЯ КОД.
+  | ⚠ A REFUSED FILE IS A FAILURE FOR THE EXIT CODE TOO.
   |
-  | `sellanto push && sellanto publish` е очевидният ред в един скрипт. С
-  | изход 0 върху отказ той публикува СТАРАТА чернова — тоест пред
-  | купувачи отива нещо, което човекът мисли, че е поправено. Червеният
-  | ред на екрана не се чете от `&&`.
+  | `sellanto push && sellanto publish` is the obvious line in a script. With
+  | exit 0 over a refusal it publishes THE OLD DRAFT — so something the person
+  | believes is fixed goes out to customers. The red line on screen is not read
+  | by `&&`.
   */
   if (bad > 0) process.exitCode = 1;
 
-  if (ok === 0) { say(`\n  Нито един файл не влезе в черновата.`); process.exitCode = 1; return; }
+  if (ok === 0) { say('\n  Not one file made it into the draft.'); process.exitCode = 1; return; }
 
   const url = (await remote(cfg, 'GET', 'preview')).preview_url;
 
-  say(`\n  ✓ ${files(ok)} в черновата${bad > 0 ? `, ${bad} отказани` : ''}. Виж я:\n    ${url}\n`);
+  say(`\n  ✓ ${files(ok)} in the draft${bad > 0 ? `, ${bad} refused` : ''}. See it:\n    ${url}\n`);
 }
 
 /**
- * Качва при всяко запазване.
- *
- * ⚠ ЕДИН ФАЙЛ, ЕДНА ЗАЯВКА, И БЕЗ ОПАШКА. Редакторите пишат по два-три пъти на
- * запазване (временен файл, преименуване, `touch`) — затова има кратко
- * изчакване по път, а не глобално: два различни файла не бива да се чакат.
- */
-/**
- * Качва при всяко запазване.
+ * Uploads on every save.
  *
  * =========================================================================
- * ⚠ ПРОМЕНИТЕ СЕ СЪБИРАТ В ЕДНА ЗАЯВКА, А НЕ ЕДНА НА ФАЙЛ
+ * ⚠ CHANGES ARE COLLECTED INTO ONE REQUEST, NOT ONE PER FILE
  * =========================================================================
- * Едно запазване от редактор е един файл — но `git checkout`, форматиращ
- * инструмент или преписване на цяла папка е стотици събития в една
- * секунда. По една заявка на файл това удря тавана от 40 в минута и
- * наблюдателят заспива за минути — тоест точно тогава, когато човекът
- * прави най-голямата промяна, каналът спира.
+ * One save from an editor is one file — but a `git checkout`, a formatter, or
+ * rewriting a whole folder is hundreds of events in one second. One request per
+ * file hits the ceiling of 40 per minute and the watcher falls asleep for
+ * minutes — that is, exactly when the person is making their biggest change,
+ * the channel stops.
  *
- * Затова събитията се събират в кратък прозорец и тръгват заедно.
- * Прозорецът е и защитата срещу редакторите, които пишат по два-три
- * пъти на запазване (временен файл, преименуване, `touch`).
+ * So events are collected in a short window and leave together. The window also
+ * covers editors that write two or three times per save (temp file, rename,
+ * touch).
  *
- * ⚠ И ЕДНА ЗАЯВКА НАВЕДНЪЖ. Докато тече качване, новите събития се
- * трупат за СЛЕДВАЩАТА — иначе два записа на един файл могат да стигнат
- * разменени и черновата да остане с ПРЕДИШНОТО съдържание.
+ * ⚠ AND ONE REQUEST AT A TIME. While an upload is in flight, new events pile up
+ * for the NEXT one — otherwise two writes to one file can arrive out of order
+ * and the draft keeps the EARLIER content.
  */
 async function watch(cfg) {
   const url = (await remote(cfg, 'GET', 'preview')).preview_url;
 
-  say(`\n  Гледам ${DIRECTORIES.filter((d) => fs.existsSync(d)).join(', ')}`);
-  say(`  Прегледът: ${url}`);
-  say('  Ctrl+C спира.\n');
+  say(`\n  Watching ${DIRECTORIES.filter((d) => fs.existsSync(d)).join(', ')}`);
+  say(`  Preview: ${url}`);
+  say('  Ctrl+C stops.\n');
 
   const pending = new Set();
   let timer = null;
@@ -734,23 +1057,23 @@ async function watch(cfg) {
     pending.clear();
 
     /*
-    | ⚠ ЧЕТЕНЕТО Е В НАДПРЕВАРА С РЕДАКТОРА, И ТОЙ ПЕЧЕЛИ.
+    | ⚠ READING RACES THE EDITOR, AND THE EDITOR WINS.
     |
-    | Между `existsSync` и `readFileSync` има прозорец, а повечето редактори
-    | запазват с временен файл и преименуване — тоест файлът го няма
-    | точно тогава, когато човекът е натиснал Ctrl+S. Досега това беше
-    | изключение в `void flush()`, тоест НАБЛЮДАТЕЛЯТ УМИРАШЕ — а човекът
-    | продължаваше да пише с убеждението, че се качва.
+    | Between `existsSync` and `readFileSync` there is a window, and most
+    | editors save with a temp file and a rename — so the file is gone exactly
+    | when the person pressed Ctrl+S. That used to be an exception inside
+    | `void flush()`, meaning THE WATCHER DIED while the person kept writing,
+    | believing it was uploading.
     |
-    | Непрочетен файл се ПРОПУСКА, а не се праща като надгробен камък:
-    | преименуването ще дойде със свое събитие след миг, а изтриване по
-    | погрешка се вижда от купувачи.
+    | An unreadable file is SKIPPED rather than sent as a tombstone: the rename
+    | arrives with its own event a moment later, while a deletion by mistake is
+    | visible to customers.
     */
     const payload = [];
 
     for (const route of batch) {
       if (!fs.existsSync(route)) {
-        // Изчезнал локално значи „върни доставения файл“ — надгробен камък.
+        // Gone locally means "give the delivered file back" — a tombstone.
         payload.push({ path: route, content: null });
 
         continue;
@@ -759,7 +1082,7 @@ async function watch(cfg) {
       try {
         payload.push({ path: route, content: fs.readFileSync(route, 'utf8') });
       } catch (e) {
-        say(`  … ${route} се пише в този миг (${e.code ?? e.message}) — чакам следващото запазване.`);
+        say(`  … ${route} is being written right now (${e.code ?? e.message}) — waiting for the next save.`);
       }
     }
 
@@ -770,9 +1093,9 @@ async function watch(cfg) {
     }
 
     /*
-    | ⚠ `sending` СЕ ПУСКА И ПРИ ГРЪМНАЛО. Заседне ли на `true`,
-    | наблюдателят остава жив, събира събития и НЕ качва нищо повече —
-    | мълчаливо, докато човекът пише.
+    | ⚠ `sending` IS RELEASED EVEN ON A THROW. Stuck at `true`, the watcher
+    | stays alive, keeps collecting events and uploads nothing more — silently,
+    | while the person writes.
     */
     try {
       for (const part of batches(payload)) {
@@ -789,7 +1112,7 @@ async function watch(cfg) {
         }
 
         for (const one of out.refused ?? []) {
-          const where = one.line ? ` (ред ${one.line})` : '';
+          const where = one.line ? ` (line ${one.line})` : '';
           const why = one.detail ? `: ${one.detail}` : '';
 
           say(`  ✗ ${one.path}${where} — ${one.reason}${why}`);
@@ -799,7 +1122,7 @@ async function watch(cfg) {
       sending = false;
     }
 
-    // Докато течеше тази заявка, може да е се натрупало ново.
+    // More may have piled up while that request was in flight.
     if (pending.size > 0) void flush();
   };
 
@@ -821,52 +1144,52 @@ async function watch(cfg) {
     });
   }
 
-  // Държи процеса жив, без да върти процесора.
+  // Keeps the process alive without spinning the CPU.
   await new Promise(() => {});
 }
 
 async function publish(cfg) {
   const done = await remote(cfg, 'POST', 'publish');
 
-  // ⚠ НЕ `path`: това е името на внесения модул, и засенчването му
-  // чака първия, който допише ред в този цикъл.
+  // ⚠ NOT `path`: that is the name of the imported module, and shadowing it
+  // waits for the first person who adds a line inside this loop.
   for (const one of done.paths ?? []) say(`  ▸ ${one}`);
 
   say(done.published === 0
-    ? '  Черновата е празна — нищо не се смени.'
-    : `  ✓ ${files(done.published)} сега ${done.published === 1 ? 'е жив' : 'са живи'}.`);
+    ? '  The draft is empty — nothing changed.'
+    : `  ✓ ${files(done.published)} now live.`);
 }
 
 async function preview(cfg) {
   const out = await remote(cfg, 'GET', 'preview');
 
-  say(`\n  ${out.preview_url}\n  (ключът живее ${Math.round(out.expires_in / 60)} минути)\n`);
+  say(`\n  ${out.preview_url}\n  (the key lives ${Math.round(out.expires_in / 60)} minutes)\n`);
 }
 
 async function discard(cfg, args = []) {
   const only = flag(args, '--path');
   const out = await remote(cfg, 'DELETE', `draft${only ? `?path=${encodeURIComponent(only)}` : ''}`);
 
-  say(`  ${out.discarded === 0 ? '✓ Черновата и без това беше празна.' : `✓ Изхвърлен${out.discarded === 1 ? '' : 'и'} ${files(out.discarded)}. Живото не е пипано.`}`);
+  say(`  ${out.discarded === 0 ? '✓ The draft was empty anyway.' : `✓ Discarded ${files(out.discarded)}. The live files were not touched.`}`);
 }
 
 /**
- * Разликата ред по ред — LCS, без нито една зависимост.
+ * The line-by-line difference — LCS, without one dependency.
  *
- * ⚠ РЕДОВЕ, А НЕ ЗНАЦИ. Шаблон се чете по редове; разлика по знаци върху
- * пренаписан ред дава каша, в която не се вижда нищо.
+ * ⚠ LINES, NOT CHARACTERS. A template is read by lines; a character diff over a
+ * rewritten line is mush nothing can be seen in.
  *
- * Таблицата е O(n·m) — за файл от няколко хиляди реда това е милиони клетки,
- * тоест мигновено и без грам памет, която да има значение. Голям `theme.css` е
- * единственият случай, в който би се усетило, и той е отрязан по-долу.
+ * The table is O(n·m) — for a file of a few thousand lines that is millions of
+ * cells, i.e. instant and with no memory worth caring about. A large `theme.css`
+ * is the only case where it would be felt, and it is cut off below.
  */
 function unified(before, after) {
   const a = before.split('\n');
   const b = after.split('\n');
 
-  // Дълъг файл не се разлага — казва се само колко реда са различни.
+  // A long file is not decomposed — only the line counts are reported.
   if (a.length * b.length > 4_000_000) {
-    return [`  (файлът е голям: ${a.length} → ${b.length} реда; разликата не се разлага)`];
+    return [`  (large file: ${a.length} → ${b.length} lines; the difference is not decomposed)`];
   }
 
   const table = Array.from({ length: a.length + 1 }, () => new Uint32Array(b.length + 1));
@@ -897,25 +1220,20 @@ function unified(before, after) {
 }
 
 /**
- * Какво съм сменил спрямо ДОСТАВЕНИЯ файл.
- *
- * ⚠ СПРЯМО ДОСТАВЕНИЯ, А НЕ СПРЯМО ЖИВОТО. „Какво съм пипал по темата“ е
- * въпросът, който човек задава, преди да пусне промяна или преди да я върне;
- * „какво се е сменило от последното качване“ вече го казва `status`.
- */
-/**
- * Какво съм сменил спрямо ДОСТАВЕНАТА тема.
+ * What I changed against the DELIVERED theme.
  *
  * =========================================================================
- * ДВА РЕЖИМА, ЗАЩОТО ВЪПРОСИТЕ СА ДВА
+ * TWO MODES, BECAUSE THERE ARE TWO QUESTIONS
  * =========================================================================
- * Без път: „кои файла съм пипнал“ — един списък, без нито един байт
- * съдържание. С път: „какво точно“ — една заявка за един файл.
+ * Without a path: "which files have I touched" — one list, not a byte of
+ * content. With a path: "what exactly" — one request for one file.
  *
- * ⚠ Първата редакция врътеше заявка ЗА ВСЕКИ СВОЙ ФАЙЛ — тоест търговец
- * със сто презаписани файла удряше тавана от 40 в минута. Точно
- * дефектът, който `pull` и `push` вече не имат, повторен в третата
- * команда, защото тя изглеждаше като „само един файл“.
+ * ⚠ Not "what changed since the last upload" — that is what `status` answers.
+ *
+ * ⚠ The first draft of this made a request FOR EVERY OWN FILE — so a merchant
+ * with a hundred overridden files hit the ceiling of 40 per minute. Exactly the
+ * defect `pull` and `push` no longer have, repeated in the third command
+ * because it looked like "just one file".
  */
 async function diff(cfg, args = []) {
   const only = args.find((one) => !one.startsWith('--'));
@@ -925,20 +1243,20 @@ async function diff(cfg, args = []) {
 
   if (only === undefined) {
     if (mine.length === 0) {
-      say('  Няма нито един свой файл — темата е както я доставя платформата.');
+      say('  Not one own file — the theme is exactly as the platform delivers it.');
 
       return;
     }
 
-    for (const one of mine) say(`  ${one.state === 'draft' ? 'чернова' : 'живо    '}  ${one.path}`);
+    for (const one of mine) say(`  ${one.state === 'draft' ? 'draft' : 'live '}  ${one.path}`);
 
-    say(`\n  ${files(mine.length)} са твои. За разликата ред по ред: diff <път>\n`);
+    say(`\n  ${files(mine.length)} ${mine.length === 1 ? 'is' : 'are'} yours. For the line-by-line difference: diff <path>\n`);
 
     return;
   }
 
   if (!mine.some((f) => f.path === only)) {
-    say(`  „${only}“ не е твой файл — темата го доставя непипнат.`);
+    say(`  "${only}" is not one of yours — the theme delivers it untouched.`);
 
     return;
   }
@@ -948,51 +1266,63 @@ async function diff(cfg, args = []) {
   say(`\n  ── ${only}`);
 
   if (typeof one.delivered !== 'string') {
-    say('  (нов файл — платформата не доставя такъв)\n');
+    say('  (a new file — the platform delivers no such thing)\n');
 
     return;
   }
 
   const lines = unified(one.delivered, one.content ?? '');
 
-  say(lines.length === 0 ? '  (няма разлика)' : lines.join('\n'));
+  say(lines.length === 0 ? '  (no difference)' : lines.join('\n'));
   say('');
 }
 
 /**
- * Кои теми може да пипа този магазин.
+ * Which themes this store may touch.
  *
- * ⚠ ПОДГОТОВКАТА РАБОТИ ЗА ВСЯКА ОТ ТЯХ, ПРЕГЛЕДЪТ — САМО ЗА АКТИВНАТА.
- * Ключът за преглед е обвързан с двойката (магазин, тема), а витрината рисува
- * темата на магазина. Казва се, защото иначе човек подготвя тема и се
- * чуди защо `preview` не показва неговата работа.
+ * ⚠ PREPARATION WORKS FOR ANY OF THEM, PREVIEW ONLY FOR THE ACTIVE ONE. The
+ * preview key is bound to the pair (store, theme) while the storefront renders
+ * the store's own theme. It is said out loud, because otherwise someone
+ * prepares a theme and wonders why `preview` does not show their work.
+ *
+ * ⚠ AND THE SHIPPED THEMES ARE IN THIS LIST. Every theme the platform offers
+ * generally is downloadable and editable — that is what `ready` means. So the
+ * way to start from a finished design is `use <slug>` and `pull`, not copying
+ * files out of somebody's screenshot.
  */
-async function themes(cfg) {
+async function themes(cfg, args = []) {
   const out = await call(cfg, 'GET', 'themes');
+
+  if (args.includes('--json')) {
+    emit({ active: out.active ?? null, themes: out.themes ?? [] });
+
+    return;
+  }
 
   say('');
 
   for (const one of out.themes ?? []) {
-    const mark = one.active ? ' ◀ активна' : '';
-    const ready = one.ready ? '' : '   (не е готова)';
+    const mark = one.active ? ' ◀ active' : '';
+    const ready = one.ready ? '' : '   (not ready)';
 
     say(`    ${one.theme.padEnd(14)} ${String(one.version || '').padEnd(8)} ${one.name}${mark}${ready}`);
   }
 
-  say(`\n  Сваляне на друга: init --api <адрес> --theme <слуг>`);
-  say(`  Преглед работи само за активната; другите се подготвят и се пускат от админа.\n`);
+  say(`\n  Work on another one: ${ME} use <slug>   then: ${ME} pull`);
+  say('  Any ready theme above can be downloaded and edited; preview works only');
+  say('  for the active one, and other themes are switched on from the admin.\n');
 }
 
-/** Версиите на един файл — най-новата отгоре. */
+/** The versions of one file — newest first. */
 async function versions(cfg, args = []) {
   const only = args.find((one) => !one.startsWith('--'));
 
-  if (!only) die('Искам пътя: versions sections/hero.twig');
+  if (!only) die('I need the path: versions sections/hero.twig');
 
   const out = await remote(cfg, 'GET', `files/${encodeURI(only)}/versions`);
 
   if ((out.versions ?? []).length === 0) {
-    say('  Този файл няма история — не е бил публикуван през канала.');
+    say('  This file has no history — it has never been published through the channel.');
 
     return;
   }
@@ -1000,101 +1330,105 @@ async function versions(cfg, args = []) {
   say(`\n  ${only}\n`);
 
   for (const one of out.versions) {
-    // ⚠ Празната версия НЕ е „празен файл“, а „тогава нямаше нищо мое“ —
-    // връщането към нея е връщане към ТЕМАТА.
-    say(`    ${String(one.no).padStart(3)}  ${one.created_at}${one.empty ? '   (тогава беше темата)' : ''}`);
+    // ⚠ An empty version is not "an empty file" but "back then nothing of mine
+    // was here" — restoring to it is restoring TO THE THEME.
+    say(`    ${String(one.no).padStart(3)}  ${one.created_at}${one.empty ? '   (the theme itself back then)' : ''}`);
   }
 
-  say(`\n  Връщане: ${ME} restore ${only} --version <номер>\n`);
+  say(`\n  To go back: ${ME} restore ${only} --version <number>\n`);
 }
 
 /**
- * Връща файл към стара версия — в ЧЕРНОВАТА.
+ * Puts a file back to an older version — INTO THE DRAFT.
  *
- * ⚠ БЕЗ --version значи КЪМ ОРИГИНАЛА НА ТЕМАТА, не към последната версия.
- * Двете са различни изречения и второто се казва с число.
+ * ⚠ Without --version means TO THE THEME'S OWN FILE, not to the last version.
+ * Those are two different sentences and the second one is said with a number.
  *
- * ⚠ И НЕ Е ЖИВО, докато не кажеш `publish` — каналът има едно обещание. С
- * `--publish` двата хода стават един, но той се иска изрично.
+ * ⚠ AND IT IS NOT LIVE until you say `publish` — the channel has one promise.
+ * With `--publish` the two moves become one, but it has to be asked for.
  */
 async function restore(cfg, args = []) {
   const only = args.find((one) => !one.startsWith('--') && !/^\d+$/.test(one));
 
-  if (!only) die('Искам пътя: restore sections/hero.twig [--version 3]');
+  if (!only) die('I need the path: restore sections/hero.twig [--version 3]');
 
   const asked = flag(args, '--version');
   const version = asked === undefined ? null : Number(asked);
 
-  if (version !== null && !Number.isInteger(version)) die('--version иска цяло число.');
+  if (version !== null && !Number.isInteger(version)) die('--version wants a whole number.');
 
   const out = await remote(cfg, 'POST', `files/${encodeURI(only)}/restore`, { version });
 
   say(version === null
-    ? `  ✓ ${only} → оригинала на темата (в черновата)`
-    : `  ✓ ${only} → версия ${version} (в черновата)`);
+    ? `  ✓ ${only} → the theme's own file (in the draft)`
+    : `  ✓ ${only} → version ${version} (in the draft)`);
 
   if (!args.includes('--publish')) {
-    say(`\n  Виж я: ${out.preview_url}`);
-    say(`  После: ${ME} publish\n`);
+    say(`\n  See it: ${out.preview_url}`);
+    say(`  Then: ${ME} publish\n`);
 
     return;
   }
 
   /*
-  | ⚠ `publish` пуска ЦЯЛАТА ЧЕРНОВА, не само върнатия файл.
+  | ⚠ `publish` RELEASES THE WHOLE DRAFT, not just the restored file.
   |
-  | Чете се като „върни този и го пусни“, а ако в черновата чака полуготова
-  | работа, тя също тръгва пред купувачи. Казва се ПРЕДИ хода,
-  | защото списъкът СЛЕД него е вече история.
+  | It reads as "put this one back and ship it", but if half-finished work is
+  | waiting in the draft, that goes out to customers too. It is said BEFORE the
+  | move, because the list AFTER it is already history.
   */
-  say('  ⚠ `--publish` пуска цялата чернова, не само този файл:');
+  say('  ⚠ `--publish` releases the whole draft, not just this file:');
 
   await publish(cfg);
 }
 
 /**
- * Кои мои файлове са изостанали от темата.
+ * Which of my files are behind the theme.
  *
- * ⚠ ПРЕЗАПИСАНИЯТ ФАЙЛ Е КОПИЕ В МИГА НА КОПИРАНЕТО. Темата живее — поправка на
- * дефект, нов drop, ново поле — а магазинът продължава да рисува копието.
- * Работещият локално няма откъде да го научи, освен оттук.
+ * ⚠ AN OVERRIDDEN FILE IS A COPY AS OF THE MOMENT IT WAS COPIED. The theme goes
+ * on living — a bug fix, a new drop, a new field — while the store keeps
+ * rendering the copy. Someone working locally has no way to learn that except
+ * from here.
  */
-async function conflicts(cfg) {
+async function conflicts(cfg, args = []) {
   const out = await remote(cfg, 'GET', 'conflicts');
   const rows = out.files ?? [];
 
+  if (args.includes('--json')) {
+    emit({ theme: out.theme ?? null, stale: out.stale ?? 0, files: rows });
+
+    return;
+  }
+
   if (rows.length === 0) {
-    say('  Няма нито един свой файл — няма и какво да изостане.');
+    say('  Not one own file — so nothing can be behind.');
 
     return;
   }
 
   for (const one of rows) {
-    const label = { stale: 'ИЗОСТАНАЛ', unknown: 'не знам  ', fresh: 'актуален ' }[one.state] ?? one.state;
+    const label = { stale: 'BEHIND  ', unknown: 'unknown ', fresh: 'current ' }[one.state] ?? one.state;
 
     say(`  ${label}  ${one.path}`);
   }
 
   say(out.stale === 0
-    ? '\n  ✓ Нито един не е изостанал от темата.'
-    : `\n  ⚠ ${files(out.stale)} ${out.stale === 1 ? 'е копие' : 'са копия'} на файл, който платформата е сменила оттогава.\n    Сравни с доставения: ${ME} diff <път>`);
+    ? '\n  ✓ Not one of them is behind the theme.'
+    : `\n  ⚠ ${files(out.stale)} ${out.stale === 1 ? 'is a copy' : 'are copies'} of a file the platform has changed since.\n    Compare with the delivered one: ${ME} diff <path>`);
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Общото между `status`, `push` и `watch`
+   What `status`, `push` and `watch` share
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const index = (cfg) => remote(cfg, 'GET', 'files');
 
 /**
- * Какво се е сменило от последното качване — ПО ОТПЕЧАТЪК, не по време.
+ * What changed since the last upload — BY CHECKSUM, not by time.
  *
- * ⚠ Не се бърка с командата `diff`, която отговаря на друг въпрос:
- * „какво съм сменил спрямо ДОСТАВЕНИЯ файл“.
- *
- * ⚠ ВРЕМЕТО НА ФАЙЛА НЕ ГОВОРИ ЗА СЪДЪРЖАНИЕТО. `git checkout` на стар клон
- * прави всички файлове „нови“, а редактор, който запазва без промяна, също.
- * Отпечатъкът казва точно едно нещо и то е вярното.
+ * ⚠ A FILE'S TIMESTAMP SAYS NOTHING ABOUT ITS CONTENT. A `git checkout` of an
+ * old branch makes every file "new", and so does an editor that saves without a
+ * change. The checksum says exactly one thing and it is the true one.
  */
 async function changes(cfg) {
   const listing = await index(cfg);
@@ -1105,23 +1439,22 @@ async function changes(cfg) {
   for (const [route, content] of local) {
     const file = known.get(route);
 
-    if (!file) { changed.push([route, 'нов ']); continue; }
-    if (file.hash !== sha256(content)) changed.push([route, 'смен']);
+    if (!file) { changed.push([route, 'new']); continue; }
+    if (file.hash !== sha256(content)) changed.push([route, 'chg']);
   }
 
   /*
-  | ⚠ ИЗТРИТИТЕ ЛОКАЛНО — САМО СВОИТЕ, И НИКОГА ДОСТАВЕНИТЕ.
+  | ⚠ DELETED LOCALLY — ONLY MY OWN, NEVER THE DELIVERED ONES.
   |
-  | `watch` вижда събитието „файлът изчезна“ и праща надгробен камък.
-  | `push` няма събития — той вижда само две снимки. Без този клон
-  | изтриването работеше САМО докато наблюдателят върви — два различни
-  | отговора на едно и също действие.
+  | `watch` sees the "file disappeared" event and sends a tombstone. `push` has
+  | no events — it sees two snapshots. Without this branch, deleting worked ONLY
+  | while the watcher was running: two different answers to one action.
   |
-  | ⚠ А НЕ ВСИЧКО, КОЕТО ЛИПСВА ЛОКАЛНО, И ТОВА Е ВАЖНОТО. Човек, който
-  | е сложил ЕДИН файл в празна папка и е казал `push`, НЕ иска да изтрие
-  | цялата си тема. Затова се гледат само файловете в състояние `live` или
-  | `draft` — тези, които той САМ е презаписал. Липсващ `delivered` файл е
-  | нормалното състояние на всеки, който не е свалил цялата тема.
+  | ⚠ AND NOT EVERYTHING THAT IS MISSING LOCALLY, WHICH IS THE IMPORTANT PART.
+  | Someone who put ONE file in an empty folder and said `push` does NOT want to
+  | delete their whole theme. So only files in state `live` or `draft` are
+  | considered — the ones they overrode THEMSELVES. A missing `delivered` file
+  | is the normal state of anyone who did not download the whole theme.
   */
   const removed = listing.files
     .filter((f) => (f.state === 'live' || f.state === 'draft') && !local.has(f.path))
@@ -1131,11 +1464,11 @@ async function changes(cfg) {
 }
 
 /**
- * Темата на магазина — пита се веднъж и се помни в `.sellanto.json`.
+ * The store's theme — asked once and remembered in `.sellanto.json`.
  *
- * ⚠ НЕ СЕ ЗАКОВАВА РЪЧНО. Магазин, който е сменил темата си, има други файлове;
- * заковано име би качвало в тема, която витрината вече не рисува — и никой не
- * би разбрал защо промените „не се виждат“.
+ * ⚠ NOT PINNED BY HAND. A store that changed its theme has different files; a
+ * pinned name would upload into a theme the storefront no longer renders — and
+ * nobody would understand why the changes "do not show".
  */
 let lastError = null;
 
@@ -1152,59 +1485,63 @@ function flag(args, name) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   СПРАВКАТА ЗА АВТОРА И ОБНОВЯВАНЕТО НА САМИЯ ИНСТРУМЕНТ
+   THE REFERENCE, THE AGENT BRIEF, AND UPDATING THE TOOL ITSELF
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/** Където живее всичко, което инструментът държи за себе си. */
+/** Where everything the tool keeps for itself lives. */
 const HOME = '.sellanto';
 
 const REFERENCE = `${HOME}/THEME-REFERENCE.md`;
 
+/** The brief for coding assistants — at the root, where they look. */
+const AGENTS = 'AGENTS.md';
+
 /**
- * Справката, както я обявява ПЛАТФОРМАТА — Markdown, за четене до редактора.
+ * The reference as THE PLATFORM declares it — Markdown, to read beside the editor.
  *
- * ⚠ ПИШЕ СЕ ОТ ОТГОВОРА, А НЕ СЕ НОСИ В ТОЗИ ФАЙЛ. Списък с drop-ове и филтри,
- * вграден в клиента, се разминава с платформата при първото ѝ издание — и то
- * мълчаливо, защото човекът чете местния файл и му вярва.
+ * ⚠ WRITTEN FROM THE RESPONSE, NOT CARRIED IN THIS FILE. A list of drops and
+ * filters baked into the client drifts from the platform at its first release —
+ * and silently, because the person reads the local file and believes it.
  */
 function referenceMarkdown(ref) {
   const lines = [
-    '# Темата на този магазин — какво може да ползва',
+    '# This store\'s theme — what it may use',
     '',
-    '> ⚠ ТОЗИ ФАЙЛ СЕ ГЕНЕРИРА. Не го редактирай — при следващото `pull` или',
-    '> `docs` се презаписва от платформата.',
+    '> ⚠ THIS FILE IS GENERATED. Do not edit it — the next `pull` or `docs`',
+    '> overwrites it from the platform.',
     '',
-    `Тема: **${ref.theme}** ${ref.theme_version ?? ''}`,
-    `Отпечатък на договора: \`${(ref.checksum ?? '').slice(0, 12)}\``,
+    `Theme: **${ref.theme}** ${ref.theme_version ?? ''}`,
+    `Contract checksum: \`${(ref.checksum ?? '').slice(0, 12)}\``,
     '',
-    '## Как се чете това',
+    '## How to read this',
     '',
-    'Темата е Twig в **пясъчник**: работи само изброеното тук. Нищо друго не',
-    'съществува за шаблона — включително неща, които работят в обикновен Twig',
-    '(`|upper`, `|raw`, `source()`, `constant()`, `range`, `..`). Това не е',
-    'пропуск: всяко от тях е или опасно, или излишно, а всяко добавено е нова',
-    'повърхност.',
+    'The theme is Twig in a **sandbox**: only what is listed here works. Nothing',
+    'else exists for a template — including things that work in ordinary Twig',
+    '(`|upper`, `|raw`, `source()`, `constant()`, `range`, `..`). That is not an',
+    'oversight: each of them is either dangerous or redundant, and each one added',
+    'is new surface.',
     '',
-    '⚠ Забраненото **не пада при качване** — то пада при рисуване. Тоест файл с',
-    '`|upper` минава проверката и после не рисува секцията. Ако нещо изчезне от',
-    'страницата без грешка, първо търси име, което не е в списъците отдолу.',
+    '⚠ What is forbidden **does not fail on upload** — it fails on render. So a',
+    'file with `|upper` passes validation and then does not draw the section. If',
+    'something vanishes from the page with no error, look first for a name that',
+    'is not in the lists below.',
     '',
-    '## Тагове',
+    '## Tags',
     '',
     (ref.tags ?? []).map((one) => `\`{% ${one} %}\``).join(' · '),
     '',
-    '## Филтри',
+    '## Filters',
     '',
     (ref.filters ?? []).map((one) => `\`|${one}\``).join(' · '),
     '',
-    '## Функции',
+    '## Functions',
     '',
     (ref.functions ?? []).map((one) => `\`${one}()\``).join(' · '),
     '',
-    '## Данните (drops)',
+    '## The data (drops)',
     '',
-    'Полета извън тези не съществуват — обръщение към такова рисува празно',
-    'място, а не грешка.',
+    'Fields outside these do not exist — referencing one draws an empty space,',
+    'not an error.',
     '',
   ];
 
@@ -1216,24 +1553,24 @@ function referenceMarkdown(ref) {
   const limits = ref.limits ?? {};
 
   lines.push(
-    '## Кои файлове се редактират',
+    '## Which files are editable',
     '',
-    `Папки: ${(paths.directories ?? []).map((one) => `\`${one}/\``).join(' · ')}`,
+    `Directories: ${(paths.directories ?? []).map((one) => `\`${one}/\``).join(' · ')}`,
     '',
-    `Разширения: ${(paths.extensions ?? []).map((one) => `\`.${one}\``).join(' · ')}`,
+    `Extensions: ${(paths.extensions ?? []).map((one) => `\`.${one}\``).join(' · ')}`,
     '',
-    '⚠ Чекаутът **не се редактира**, колкото и права да има ключът:',
+    '⚠ Checkout is **not editable**, whatever the key is allowed to do:',
     (paths.read_only ?? []).map((one) => `\`${one}\``).join(' · '),
     '',
-    'Счупена начална страница е неудобство; счупен чекаут са поръчки, които не',
-    'се случват, и се вижда чак когато някой погледне оборота.',
+    'A broken home page is an inconvenience; a broken checkout is orders that do',
+    'not happen, and it shows up only when somebody looks at revenue.',
     '',
-    '## Границите',
+    '## The limits',
     '',
-    `- файл: до **${Math.round((limits.max_bytes ?? 0) / 1024)} KB**`,
-    `- свои файлове на тема: до **${limits.max_files ?? '?'}**`,
-    `- дължина на пътя: до **${limits.max_path ?? '?'}** знака`,
-    `- файлове в една групова заявка: до **${limits.max_batch ?? '?'}**`,
+    `- one file: up to **${Math.round((limits.max_bytes ?? 0) / 1024)} KB**`,
+    `- own files per theme: up to **${limits.max_files ?? '?'}**`,
+    `- path length: up to **${limits.max_path ?? '?'}** characters`,
+    `- files in one batched request: up to **${limits.max_batch ?? '?'}**`,
     '',
   );
 
@@ -1241,11 +1578,105 @@ function referenceMarkdown(ref) {
 }
 
 /**
- * Сваля справката, ако договорът се е разместил.
+ * The brief for Claude Code, Cursor and the other coding assistants.
  *
- * ⚠ ПО ОТПЕЧАТЪК, А НЕ ПО ВЕРСИЯ НА ИЗДАНИЕТО. Издание излиза често и почти
- * никога не мени обявеното към темите; теглене при всяко разгръщане е заявка без
- * отговор. Отпечатъкът се мени ТОЧНО когато нещо в договора е излязло или влязло.
+ * =========================================================================
+ * WHY A SEPARATE FILE, AND WHY AT THE ROOT
+ * =========================================================================
+ * `AGENTS.md` at the root of a working folder is what these tools read on their
+ * own, without being told. `.sellanto/THEME-REFERENCE.md` is the full contract
+ * and is long; an assistant needs something shorter and more imperative first —
+ * what may be run, what may not be touched, and which mistake is silent.
+ *
+ * ⚠ THE SILENT MISTAKE IS THE WHOLE REASON THIS FILE EXISTS. An assistant
+ * writes `|upper` because it works in every other Twig it has ever seen, the
+ * upload succeeds, and the section simply stops rendering. Nothing in the
+ * output says so. The brief says it before the first attempt.
+ *
+ * ⚠ IT IS GENERATED, LIKE THE REFERENCE — the limits and the directories come
+ * from the platform's answer, not from constants in this file, so it cannot
+ * quietly describe last year's rules.
+ */
+function agentsMarkdown(ref) {
+  const paths = ref.paths ?? {};
+  const limits = ref.limits ?? {};
+
+  return [
+    '# Working on this Sellanto theme',
+    '',
+    '> ⚠ GENERATED by `sellanto pull`. Do not edit — it is overwritten. Put your',
+    '> own instructions in a different file.',
+    '',
+    `Theme **${ref.theme}** ${ref.theme_version ?? ''}. This folder is a working copy of one`,
+    'store\'s theme. Files are uploaded through the `sellanto` CLI, never by',
+    'copying them anywhere.',
+    '',
+    '## The rules that are not obvious',
+    '',
+    '1. **Templates are Twig in a sandbox.** Only the tags, filters, functions',
+    '   and data listed in `.sellanto/THEME-REFERENCE.md` exist. Read that file',
+    '   before writing a template.',
+    '2. **A forbidden name fails at render, not at upload.** `|upper`, `|raw`,',
+    '   `source()`, `constant()`, `range`, `..` and method calls on objects all',
+    '   upload cleanly and then silently draw nothing. If a section disappears',
+    '   with no error, look for a name that is not in the reference.',
+    '3. **Uploading is not publishing.** `push` and `watch` write to a draft that',
+    '   only `preview` shows. Customers see nothing until `publish`, which',
+    '   releases the WHOLE draft at once.',
+    '4. **Checkout is read-only**, whatever the key allows:',
+    `   ${(paths.read_only ?? []).map((one) => `\`${one}\``).join(', ') || '—'}`,
+    '5. **Binary files do not travel through this channel** (`.woff2`, `.png`).',
+    '   They are uploaded as media from the admin. This folder is not a complete',
+    '   copy of the theme.',
+    '',
+    '## Commands',
+    '',
+    '```bash',
+    'sellanto status --json     # machine-readable: what differs, what is stale',
+    'sellanto pull              # download the theme and refresh this file',
+    'sellanto push              # upload changes into the draft',
+    'sellanto preview           # the URL where the draft renders',
+    'sellanto publish           # make the draft live',
+    'sellanto diff <path>       # line by line against the delivered file',
+    'sellanto conflicts --json  # which of our files the platform has since changed',
+    'sellanto restore <path>    # put a file back to the theme\'s own version',
+    '```',
+    '',
+    '⚠ `sellanto push` exits non-zero when a file is refused, so `push && publish`',
+    'is safe to write. Refusals carry the line number.',
+    '',
+    '## Where to edit',
+    '',
+    `Directories: ${(paths.directories ?? []).map((one) => `\`${one}/\``).join(', ')}`,
+    '',
+    `Extensions: ${(paths.extensions ?? []).map((one) => `\`.${one}\``).join(', ')}`,
+    '',
+    '## Limits',
+    '',
+    `- one file up to ${Math.round((limits.max_bytes ?? 0) / 1024)} KB`,
+    `- up to ${limits.max_files ?? '?'} own files per theme`,
+    `- path up to ${limits.max_path ?? '?'} characters`,
+    '- the API allows 40 requests per minute per account, which is why the CLI',
+    '  batches; do not write loops that call it once per file',
+    '',
+    '## Do not',
+    '',
+    '- Do not read or commit `.sellanto.token` — it is a live API key.',
+    '- Do not edit `.sellanto/THEME-REFERENCE.md` or this file; both are',
+    '  regenerated.',
+    '- Do not invent drops or filters "that ought to exist". If it is not in the',
+    '  reference, it renders as nothing.',
+    '',
+  ].join('\n');
+}
+
+/**
+ * Downloads the reference when the contract has shifted.
+ *
+ * ⚠ BY CHECKSUM, NOT BY RELEASE NUMBER. Releases happen often and almost never
+ * change what is declared to themes; downloading on every deployment is a
+ * request with no answer in it. The checksum changes EXACTLY when something
+ * entered or left the contract.
  */
 async function refreshReference(cfg, force = false) {
   const ref = await remote(cfg, 'GET', 'reference').catch(() => null);
@@ -1254,43 +1685,44 @@ async function refreshReference(cfg, force = false) {
 
   const same = cfg.referenceChecksum === ref.checksum && fs.existsSync(REFERENCE);
 
-  if (same && !force) return ref;
+  if (same && !force && fs.existsSync(AGENTS)) return ref;
 
   fs.mkdirSync(HOME, { recursive: true });
   fs.writeFileSync(REFERENCE, referenceMarkdown(ref) + '\n', 'utf8');
+  fs.writeFileSync(AGENTS, agentsMarkdown(ref), 'utf8');
 
   cfg.referenceChecksum = ref.checksum;
   saveConfig(cfg);
 
-  say(`  ✓ ${REFERENCE}${same ? '' : ' (обновена)'}`);
+  say(`  ✓ ${REFERENCE} · ${AGENTS}${same ? '' : ' (refreshed)'}`);
 
   return ref;
 }
 
-/** Справката, по заявка. */
+/** The reference, on request. */
 async function docs(cfg) {
   const ref = await refreshReference(cfg, true);
 
   if (ref === null) {
-    die('Магазинът не дава справка — вероятно е на по-старо издание.');
+    die('This store does not serve a reference — it is probably on an older release.');
   }
 
-  say(`\n  Темата е ${ref.theme} ${ref.theme_version ?? ''}.`);
-  say(`  ${(ref.filters ?? []).length} филтъра · ${(ref.functions ?? []).length} функции · ${Object.keys(ref.drops ?? {}).length} корена от данни\n`);
+  say(`\n  Theme ${ref.theme} ${ref.theme_version ?? ''}.`);
+  say(`  ${(ref.filters ?? []).length} filters · ${(ref.functions ?? []).length} functions · ${Object.keys(ref.drops ?? {}).length} data roots\n`);
 }
 
-/* ─────────────────────────── самият инструмент ─────────────────────────── */
+/* ─────────────────────────── the tool itself ─────────────────────────── */
 
 /**
- * Има ли по-нова версия на инструмента.
+ * Is there a newer version of the tool.
  *
- * ⚠ НАЙ-МНОГО ВЕДНЪЖ НА ДЕН, и това е цялата причина за `checkedAt`. Проверка на
- * всяка команда е по една заявка на всяко натискане срещу таван от 40 в минута —
- * тоест `watch` щеше да го изразходва сам.
+ * ⚠ AT MOST ONCE A DAY, and that is the whole reason for `checkedAt`. A check
+ * on every command is one request per keystroke against a ceiling of 40 per
+ * minute — `watch` alone would spend it.
  *
- * ⚠ И НЕ СПИРА НИЩО, АКО ПАДНЕ. Стар магазин без този адрес, прекъсната мрежа
- * или изтекъл ключ не бива да правят `push` невъзможен: проверката за версия е
- * удобство, а не част от работата.
+ * ⚠ AND IT STOPS NOTHING IF IT FAILS. An older store without this address, a
+ * dropped network or an expired key must not make `push` impossible: the
+ * version check is a convenience, not part of the work.
  */
 async function checkTool(cfg) {
   const day = 24 * 60 * 60 * 1000;
@@ -1305,45 +1737,41 @@ async function checkTool(cfg) {
   if (out === null || out.version === VERSION) return;
 
   if (cfg.autoUpdate === true) {
-    say(`  … нова версия ${out.version} — обновявам се (autoUpdate)`);
+    say(`  … new version ${out.version} — updating (autoUpdate)`);
     await applyUpdate(cfg, out);
 
     return;
   }
 
-  say(`  ⚠ Има нова версия на инструмента: ${out.version} (твоята е ${VERSION}).`);
-  say(`    Обнови се с: ${ME} selfupdate\n`);
+  say(`  ⚠ There is a newer version of the tool: ${out.version} (yours is ${VERSION}).`);
+  say(`    Update with: ${ME} selfupdate\n`);
 }
 
 /**
- * Презаписва СЕБЕ СИ с това, което платформата дава.
+ * Overwrites ITSELF with what the platform serves.
  *
  * =========================================================================
- * ⚠ ЗАЩО ТОВА НЕ Е АВТОМАТИЧНО ПО ПОДРАЗБИРАНЕ
+ * ⚠ WHY THIS IS NOT AUTOMATIC BY DEFAULT
  * =========================================================================
- * Тук код от мрежата става код на машината на човека. Веригата, по която това
- * се обръща срещу него, е кратка: една сгрешена буква в `--api`, подменен DNS,
- * прокси в чужда мрежа. Затова платформата КАЗВА, а човекът РЕШАВА — освен ако
- * изрично не е сложил `"autoUpdate": true` в `.sellanto.json`.
+ * Here code from the network becomes code on someone's machine. The chain that
+ * turns this against them is short: one mistyped letter in `--api`, a poisoned
+ * DNS answer, a proxy on a foreign network. So the platform SAYS and the person
+ * DECIDES — unless they explicitly put `"autoUpdate": true` in `.sellanto.json`.
  *
- * Три огради, и всяка спира различно нещо:
- *   1. **HTTPS** — иска се от `call()` за всеки хост извън лоопбека; срещу
- *      подслушване и подмяна в мрежата;
- *   2. **отпечатък** — изтеглените байтове се сверяват с `sha256` от
- *      описанието; срещу отрязан отговор, страница за грешка и прекъсната мрежа;
- *   3. **форма** — файлът трябва да започва с шапката на Node скрипт и да носи
- *      своя `VERSION`; срещу „200 OK“, което е HTML на портал за вход.
- *
- * ⚠ И СЕ ПИШЕ ПРЕЗ ВРЕМЕНЕН ФАЙЛ С ПРЕИМЕНУВАНЕ. Пряк запис върху работещия
- * скрипт при прекъсване оставя ПОЛОВИН инструмент — тоест човекът губи и
- * начина да се върне.
+ * Three fences, each stopping something different:
+ *   1. **HTTPS** — required by `call()` for every host outside loopback;
+ *      against eavesdropping and tampering on the network;
+ *   2. **the checksum** — the downloaded bytes are checked against the `sha256`
+ *      the platform declared, so a truncated or substituted answer is refused;
+ *   3. **the shape** — it has to look like this tool at all, so an error page
+ *      returned with 200 does not get written over the tool.
  */
 async function applyUpdate(cfg, meta) {
   const source = await call(cfg, 'GET', '/tools/theme-cli/download', undefined, false, true)
     .catch((e) => { say(`  ✗ ${e.message}`); return null; });
 
   if (typeof source !== 'string' || source === '') {
-    say('  ✗ Платформата не даде инструмента.');
+    say('  ✗ The platform did not return the tool.');
 
     return false;
   }
@@ -1351,13 +1779,13 @@ async function applyUpdate(cfg, meta) {
   const got = crypto.createHash('sha256').update(source, 'utf8').digest('hex');
 
   if (meta.sha256 && got !== meta.sha256) {
-    say(`  ✗ Отпечатъкът не съвпада (${got.slice(0, 12)} вместо ${String(meta.sha256).slice(0, 12)}) — НЕ записвам.`);
+    say(`  ✗ Checksum mismatch (${got.slice(0, 12)} instead of ${String(meta.sha256).slice(0, 12)}) — NOT writing.`);
 
     return false;
   }
 
   if (!source.startsWith('#!/usr/bin/env node') || !/^const VERSION = '/m.test(source)) {
-    say('  ✗ Изтегленото не изглежда като инструмента — НЕ записвам.');
+    say('  ✗ What came back does not look like the tool — NOT writing.');
 
     return false;
   }
@@ -1366,25 +1794,24 @@ async function applyUpdate(cfg, meta) {
   const temp = `${self}.new`;
 
   /*
-  | ⚠ ГЛОБАЛНАТА ИНСТАЛАЦИЯ ЧЕСТО НЕ Е ЗА ПИСАНЕ.
-  |
-  | `npm i -g` слага файла там, където обикновен потребител няма право да пише.
-  | Без това хващане човекът вижда EACCES и стек, тоест не разбира, че
-  | инструментът му работи — просто не може да се презапише сам.
+  | ⚠ A GLOBAL INSTALL IS OFTEN NOT WRITABLE. `npm i -g` puts the file where an
+  | ordinary user may not write. Without this catch the person sees EACCES and a
+  | stack, so they cannot tell that their tool works — it just cannot replace
+  | itself.
   */
   try {
     fs.writeFileSync(temp, source, 'utf8');
     fs.renameSync(temp, self);
   } catch (e) {
-    try { fs.unlinkSync(temp); } catch { /* няма какво да се махне */ }
+    try { fs.unlinkSync(temp); } catch { /* nothing to remove */ }
 
-    say(`  ✗ Не мога да запиша ${self} (${e.code ?? e.message}).`);
-    say('    Глобална инсталация се обновява с: npm i -g github:sellanto/cli\n');
+    say(`  ✗ Cannot write ${self} (${e.code ?? e.message}).`);
+    say('    A global install is updated with: npm i -g github:sellanto/cli\n');
 
     return false;
   }
 
-  say(`  ✓ Обновен до ${meta.version}. Пусни командата пак.`);
+  say(`  ✓ Updated to ${meta.version}. Run the command again.`);
 
   return true;
 }
@@ -1393,107 +1820,118 @@ async function selfupdate(cfg) {
   const out = await call(cfg, 'GET', '/tools/theme-cli');
 
   if (out.version === VERSION) {
-    say(`  ✓ Вече си на ${VERSION} — няма по-нова.`);
+    say(`  ✓ Already on ${VERSION} — there is nothing newer.`);
 
     return;
   }
 
-  say(`  ${VERSION} → ${out.version} (${out.size} байта)`);
+  say(`  ${VERSION} → ${out.version} (${out.size} bytes)`);
 
   /*
-  | ⚠ ОТКАЗЪТ ДА СЕ ЗАПИШЕ Е НЕУСПЕХ И ЗА ИЗХОДНИЯ КОД.
+  | ⚠ REFUSING TO WRITE IS A FAILURE FOR THE EXIT CODE TOO.
   |
-  | Разминат отпечатък, папка без право за писане, отрязан отговор — всичкото
-  | се КАЗВА на екрана, но екранът не се чете от cron и от CI. С изход 0
-  | автоматизацията мисли, че се е обновила — а точно това не се е случило.
+  | A mismatched checksum, an unwritable folder, a truncated answer — all of it
+  | is SAID on screen, but a screen is not read by cron or by CI. With exit 0 the
+  | automation believes it updated — which is exactly what did not happen.
   */
   if (!await applyUpdate(cfg, out)) process.exitCode = 1;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Вратата
+   The door
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const HELP = `
-  Темата на магазина ти, локално.
+  Your store's theme, locally.
 
-  Повиква се с «${ME}»:
+  Invoked as «${ME}»:
 
-    init --api <адрес> [--store <public_id>] [--theme <слуг>]
-    themes                   кои теми може да пипа този магазин
-    pull                     сваля темата тук
-    status                   какво се различава
-    push [--delete]          качва разликите в черновата
-    watch                    същото, при всяко запазване
-    preview                  адресът, на който се вижда
-    publish                  черновата става жива
-    discard [--path <път>]   изхвърля черновата
+    login [--no-open]        get a key through the browser (start here)
+    init --api <url> [--store <public_id>] [--theme <slug>]
+    themes [--json]          which themes this store may edit
+    use <slug>               work on another theme
+    pull                     download the theme here
+    status [--json]          what differs
+    push [--delete]          upload the differences into the draft
+    watch                    the same, on every save
+    preview                  the URL where it can be seen
+    publish                  the draft becomes live
+    discard [--path <path>]  throw the draft away
 
-    diff [<път>]           какво съм сменил спрямо доставената тема
-    conflicts               кои мои файла са изостанали от темата
-    versions <път>         историята на един файл
-    restore <път> [--version N] [--publish]
-                            връща файл назад (без --version: към темата)
+    diff [<path>]            what I changed against the delivered theme
+    conflicts [--json]       which of my files are behind the theme
+    versions <path>          the history of one file
+    restore <path> [--version N] [--publish]
+                             put a file back (without --version: to the theme)
 
-    docs                    справката за тази тема → .sellanto/THEME-REFERENCE.md
-    selfupdate              обновява самия инструмент
+    docs                     rewrite .sellanto/THEME-REFERENCE.md and AGENTS.md
+    selfupdate               update the tool itself
 
-  Без --store се открива сам, ако ключът стига до един магазин.
-  "push" без --delete НЕ маха нищо — само казва кое липсва локално.
+  Without --store it works itself out, if the key reaches exactly one store.
+  "push" without --delete removes NOTHING — it only reports what is missing.
 
-  Ключът е в SELLANTO_TOKEN или в ${TOKEN_FILE}. Инструментът е ${VERSION}.
-  Пълната инструкция: github.com/sellanto/cli (и /dev/docs, раздел CLI).
+  "login" writes the key itself; "init" is for a key you already have.
+  The key lives in SELLANTO_TOKEN or in ${TOKEN_FILE}. This tool is ${VERSION}.
+  Full instructions: github.com/sellanto/cli (and /dev/docs, the CLI section).
 `;
 
 async function main() {
   const [command, ...args] = process.argv.slice(2);
 
   if (!command || command === 'help' || command === '--help') { say(HELP); return; }
+
+  /*
+  | ⚠ TWO COMMANDS COME BEFORE THE SETTINGS. `config()` exits with a sentence
+  | when `.sellanto.json` is missing — and these two are what CREATE it. Placed
+  | below, they would demand the file they exist to write.
+  */
+  if (command === 'login') { await login(args); return; }
   if (command === 'init') { await init(args); return; }
 
   const cfg = config();
 
   /*
-  | ⚠ ТЕМАТА СЕ РАЗРЕШАВА ПРЕДИ ВСЯКА КОМАНДА, А НЕ СЕ ЧЕТЕ ОТ ФАЙЛА.
+  | ⚠ THE THEME IS RESOLVED BEFORE EVERY COMMAND, NOT READ FROM THE FILE.
   |
-  | Слугът в `.sellanto.json` е само запомненото от миналия път. Магазин, който
-  | е сменил темата си от админа, трябва да бъде последван — иначе всяко
-  | качване отива в тема, която витрината не рисува, и мълчи.
+  | The slug in `.sellanto.json` is only what was remembered last time. A store
+  | that changed its theme from the admin has to be followed — otherwise every
+  | upload goes into a theme the storefront does not render, and says nothing.
   */
   const slug = await theme(cfg);
 
   if (!slug) {
-    die(['Не мога да позная темата на магазина.', (lastError?.message ?? ''), 'Ключът иска обхват write_theme_code („Запис · Код на темата"), право themes.edit_code и план с редактор на код.'].join('\n   '));
+    die(['I cannot work out the store\'s theme.', (lastError?.message ?? ''), 'The key needs the write_theme_code scope ("Write · Theme code"), the themes.edit_code permission, and a plan with the code editor.'].join('\n   '));
   }
 
   /*
-  | ⚠ ИЗБРАНАТА ТЕМА НЕ СЕ ПРЕЗАПИСВА ОТ АКТИВНАТА.
+  | ⚠ A CHOSEN THEME IS NOT OVERWRITTEN BY THE ACTIVE ONE.
   |
-  | Каналът приема всяка тема, до която акаунтът има право — тоест човек,
-  | който ПОДГОТВЯ `kometa`, докато магазинът рисува `aurora`, не бива да
-  | бъде мълчаливо прехвърлен обратно. Разликата се КАЗВА веднъж,
-  | защото това е и причината `preview` да не показва тази работа.
+  | The channel accepts any theme the account is entitled to — so someone
+  | PREPARING `kometa` while the store renders `aurora` must not be silently
+  | moved back. The difference is SAID once, because it is also the reason
+  | `preview` does not show that work.
   */
   if (cfg.theme !== undefined && cfg.theme !== slug) {
-    say(`  ℹ Подготвяш ${cfg.theme}; магазинът рисува ${slug}. Прегледът показва ${slug}.`);
+    say(`  ℹ You are preparing ${cfg.theme}; the store renders ${slug}. Preview shows ${slug}.`);
   } else if (cfg.theme !== slug) {
     cfg.theme = slug;
     saveConfig(cfg);
-    say(`  Темата на магазина е ${slug}.`);
+
+    say(`  The store's theme is ${slug}.`);
   }
 
   /*
-  | ⚠ ПРОВЕРКАТА ЗА НОВА ВЕРСИЯ Е ПРЕДИ КОМАНДАТА, но НЕ я спира.
+  | ⚠ THE VERSION CHECK COMES BEFORE THE COMMAND, but does NOT stop it.
   |
-  | Стар клиент срещу ново API вижда „не стана“ вместо изречение — тоест
-  | версията му е част от съвместимостта. Но проверка, която спира
-  | работата, когато мрежата прекъсне, е по-лоша от стар клиент.
+  | An old client against a new API sees "it did not work" instead of a
+  | sentence, so its version is part of compatibility. But a check that stops
+  | the work when the network drops is worse than an old client.
   */
   if (command !== 'selfupdate') await checkTool(cfg);
 
-  const commands = { pull, status, push, watch, preview, publish, discard, diff, versions, restore, conflicts, docs, selfupdate, themes };
+  const commands = { pull, status, push, watch, preview, publish, discard, diff, versions, restore, conflicts, docs, selfupdate, themes, use };
 
-  if (!commands[command]) die(`Няма команда \`${command}\`.${HELP}`);
+  if (!commands[command]) die(`No such command \`${command}\`.${HELP}`);
 
   await commands[command](cfg, args);
 }

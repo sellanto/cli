@@ -1,6 +1,6 @@
 {
   "name": "@sellanto/cli",
-  "version": "2026.929.4",
+  "version": "2026.929.6",
   "description": "Темата на магазин в Sellanto, локално: сваля, качва при запазване, публикува по команда.",
   "bin": {
     "sellanto": "sellanto-theme.mjs"
@@ -13,7 +13,7 @@
     "sellanto-theme.mjs"
   ],
   "scripts": {
-    "test": "node proverka.mjs"
+    "test": "node check.mjs"
   },
   "dependencies": {},
   "repository": {

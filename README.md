@@ -1,220 +1,259 @@
-# `sellanto` — темата на магазина, на твоя компютър
+# `sellanto` — your store's theme, on your own computer
 
-Инструмент за **търговеца и неговия разработчик**: сваля темата на един магазин
-в папка, качва я обратно при запазване и я пуска пред клиентите, когато кажеш.
-Един файл, нула зависимости, **Node 20+**.
+Edit a [Sellanto](https://sellanto.com) store's theme in your own editor, with
+your own git. Uploads on save, publishes on command. One file, no dependencies,
+**Node 20+**.
 
-Не пипа нито сървър, нито хранилище — говори с публичното API на магазина.
+It touches neither a server nor the Sellanto repository — it talks to one
+store's public API.
 
 ---
 
-## Инсталация
+## Install
 
 ```bash
 npm i -g github:sellanto/cli
 ```
 
-Дава команда `sellanto`. Иска **Node 20+** и няма нито една зависимост.
+Gives you a `sellanto` command.
 
-⚠ **От хранилището, не от npm регистъра.** Регистърът е още едно място, от
-което може да дойде различен файл. А `selfupdate` тегли от **самия магазин** —
-тоест командата се лекува сама срещу API-то, с което говори.
+⚠ **From the repository, not from the npm registry.** The registry is one more
+place a different file could come from. `selfupdate` pulls from **the store
+itself**, so the command heals itself against the API it talks to.
 
-Без Node пакетен мениджър работи и така:
+Without a package manager it works just as well:
 
 ```bash
-export SELLANTO_TOKEN="ключът"
+export SELLANTO_TOKEN="your key"
 
 curl -H "Authorization: Bearer $SELLANTO_TOKEN" \
-  https://<магазинът>/api/2026-07/tools/theme-cli/download \
+  https://<your-store>/api/2026-07/tools/theme-cli/download \
   -o sellanto && chmod +x sellanto
 ```
 
-Тогава се вика `./sellanto` (или `node sellanto-theme.mjs`, ако си запазил
-разширението). Инструментът си отпечатва съветите с името, с което си го
-повикал.
+Then call `./sellanto`. The tool prints its advice using whatever name you
+invoked it by.
 
-## ⚠ Раздава се от магазина
+## Connect
 
-Освен горното, всеки магазин дава клиента на
-`GET /api/{версия}/tools/theme-cli/download`. Това не е втори канал за удобство:
-версията на клиента е част от съвместимостта с API-то — нов адрес, нов таван,
-нов код за отказ. Стар клиент срещу ново API казва „не стана" вместо изречение.
-Когато същата платформа, която отговаря на заявките, дава и клиента, двете не
-могат да се разминат.
+```bash
+sellanto login
+```
 
-Инструментът проверява за нова версия веднъж на ден и **казва**; обновява се с
-`sellanto selfupdate`. Не се обновява сам по подразбиране, защото тук код от
-мрежата става код на твоята машина — за без ръце сложи `"autoUpdate": true` в
-`.sellanto.json`.
+Opens the browser, you pick the store and approve. The key is written to
+`.sellanto.token` by itself and never passes through your clipboard.
 
-⚠ При глобална инсталация `selfupdate` може да няма право да пише в папката на
-npm. Тогава го казва и обновяването е `npm i -g github:sellanto/cli`.
+⚠ **The tool prints a verification code BEFORE it opens the browser.** The
+approval screen shows the same characters. If they do not match you are
+approving somebody else's request — close the tab.
 
-## Тогава за какво е това репо
+What the approval grants, exactly: read and write the **theme code** of the
+store you picked, into a draft. It cannot see orders, customers, payments or
+settings. Revoke it under **Settings → API keys**; revoking takes effect
+immediately.
 
-За да можеш да **прочетеш кода, преди да го пуснеш**. Файлът се изпълнява на
-твоята машина и пише във витрината ти — това не е нещо, което се взима на
-доверие от една команда.
+You do not need to know your store's technical address — the dashboard does.
 
-Провери, че полученото е същото:
+<details>
+<summary>How it works, if you care</summary>
+
+A secret is generated on your machine and **never leaves the process**; only its
+`sha256` travels through the browser (PKCE, RFC 7636). The store sends the
+browser back to `127.0.0.1` carrying only "done", and the key travels over a
+second connection, against that secret. So the URL sitting in your browser
+history is not enough to obtain access.
+
+The key is created only when the tool collects it. An approval nobody collects
+leaves no live key behind.
+
+</details>
+
+### By hand, without a browser
+
+A machine with no desktop (a server, a container, `ssh`) takes the older path:
+**Settings → API keys → new key**, scope **"Write · Theme code"**
+(`write_theme_code`), then:
+
+```bash
+export SELLANTO_TOKEN="your key"
+sellanto init --api https://<your-store>
+```
+
+⚠ `write_theme_code` is a **separate scope**. The older "Write · Content"
+(`write_content`) does NOT grant theme code — a key issued to sync a blog must
+not be able to inject JavaScript into the storefront. This applies to existing
+keys too: permissions are recomputed on every request.
+
+Two more things are required: whoever issues the key must hold the
+`themes.edit_code` permission, and the store's plan must include the code editor
+(the trial does not).
+
+## The working cycle
+
+```bash
+sellanto login       # browser: pick a store and approve
+sellanto pull        # the theme + .sellanto/THEME-REFERENCE.md + AGENTS.md
+
+sellanto watch       # uploads on every save
+sellanto preview     # the URL where it shows
+sellanto publish     # only now do customers see it
+```
+
+## Start from a shipped theme
+
+Every theme the platform offers generally is downloadable and editable — that
+is what "ready" means in the list. So the way to start from a finished design is
+not to copy files out of a screenshot:
+
+```bash
+sellanto themes      # what this account may edit
+sellanto use kometa  # switch to one of them
+sellanto pull        # its delivered files land in this folder
+```
+
+Overrides are stored per (store, theme) pair, so a theme can be **prepared
+before it is switched on** from the admin.
+
+⚠ **Preview only works for the active theme** — the preview key is bound to the
+pair, while the storefront renders the store's own theme. The tool says so when
+it applies.
+
+---
+
+## The three things that surprise people
+
+### Uploading is not publishing
+
+`watch` writes to a **draft**. The storefront shows it only at the URL from
+`preview`; customers keep seeing the old version until you say `publish`.
+
+That is deliberate: a file watcher sends one state per `Ctrl+S`, including the
+half-written template. Saving from the admin screen IS publishing, because there
+it is one considered press on one file.
+
+⚠ `publish` releases **all** the draft's files at once. A theme changes in
+related files — a new section wants the template that calls it and the style
+that draws it; released one by one, there is a moment between the first and the
+third with half a change in front of customers.
+
+### The theme is Twig in a sandbox
+
+Only what `.sellanto/THEME-REFERENCE.md` lists works. Things that work in
+ordinary Twig are absent: `|upper`, `|raw`, `source()`, `constant()`, `range`,
+the `..` operator. So is calling a method on any object.
+
+⚠ **What is forbidden does not fail on upload — it fails on render.** A file
+with `|upper` passes validation and then the section simply does not draw. If
+something vanishes from the page with no error, look first for a name that is
+not in the reference.
+
+The reference is generated from the platform's own code and refreshed on every
+`pull`. Do not edit it.
+
+### Checkout is not editable
+
+The checkout layout, its pieces and `templates/checkout.json` are read-only,
+whatever the key is allowed to do. A broken home page is an inconvenience; a
+broken checkout is orders that do not happen, and it shows up only when somebody
+looks at revenue.
+
+## When something goes wrong
+
+```bash
+sellanto diff                     # which files have I touched
+sellanto diff sections/hero.twig  # what exactly, line by line
+sellanto versions sections/hero.twig
+sellanto restore sections/hero.twig --version 3 --publish
+```
+
+Every publish leaves a trace — the same history the admin's editor keeps.
+`restore` without `--version` goes back to the theme's **delivered** file.
+
+`conflicts` tells you which of your files are copies of a file the platform has
+changed since — a fix in the theme does not reach your copy, and there is no
+other way to find out.
+
+## For Claude Code, Cursor and other assistants
+
+`pull` writes an **`AGENTS.md`** into the folder: the rules that are not
+obvious, the commands, the limits, and the mistakes that fail silently. Coding
+assistants read that file on their own, so an agent working in this folder
+starts out knowing that `|upper` uploads cleanly and then renders nothing.
+
+Three commands speak JSON, so nothing has to parse prose:
+
+```bash
+sellanto status --json
+sellanto themes --json
+sellanto conflicts --json
+```
+
+⚠ Under `--json` the payload goes to **stdout** and every human sentence to
+**stderr**, so `sellanto status --json | jq` is safe.
+
+⚠ `sellanto push` exits non-zero when a file is refused, so `push && publish`
+is safe to write in a script. Refusals carry the line number.
+
+## Limits
+
+| | |
+|---|---|
+| one file | 512 KB |
+| own files per theme | 200 |
+| path length | 191 characters |
+| one batched request | 60 files / 4 MB |
+| API requests | 40 per minute per account |
+
+That last row is why `pull`, `push` and `watch` work in batches: one theme is
+~105 files, so one file per request means the first step cannot finish. On
+hitting the ceiling the tool waits out `Retry-After` and carries on.
+
+**Binary files** (`.woff2`, `.png`) do not travel through this channel — they
+are uploaded as media from the admin. This folder is not a complete copy of the
+theme.
+
+## Updating
+
+The tool checks for a new version once a day and **says so**; it updates with
+`sellanto selfupdate`. It does not update itself by default, because here code
+from the network becomes code on your machine — for hands-off updates put
+`"autoUpdate": true` in `.sellanto.json`.
+
+⚠ A global install may not be writable by `selfupdate`. It says so, and the
+update is then `npm i -g github:sellanto/cli`.
+
+The version is a date (`2026-09-29`), with `.N` for a second fix on the same day.
+
+## Revoking access
+
+Delete the key from the same screen. It stops immediately: permissions are
+computed on every request, not stored on the key's row. Files already published
+stay — bring them back with `restore` or from the admin's editor.
+
+## Verifying this file
+
+Every store serves the client itself, at
+`GET /api/{version}/tools/theme-cli/download`. This repository exists so you can
+read the code before running it, and check that the file your store served you
+is byte for byte the file published here:
 
 ```bash
 sha256sum sellanto-theme.mjs
 
 curl -sH "Authorization: Bearer $SELLANTO_TOKEN" \
-  https://<магазинът>/api/2026-07/tools/theme-cli | grep -o '"sha256":"[^"]*"'
+  https://<your-store>/api/2026-07/tools/theme-cli | grep -o '"sha256":"[^"]*"'
 ```
 
-Двете трябва да съвпадат. Ако не съвпадат, спри и питай — между теб и магазина
-има нещо, което мени отговори.
+The two must match. If they do not, stop and ask — something between you and the
+store is changing responses.
 
-Тук се приемат и **въпроси и сигнали за грешки** (Issues).
+## Licence and checks
 
-## Ключът
+MIT — see [LICENSE](LICENSE).
 
-**Настройки → API ключове → нов ключ**, обхват **„Запис · Код на темата"**
-(`write_theme_code`).
+`npm test` (see [check.mjs](check.mjs)) checks what this folder promises: that the version in `package.json`
+and the version in the script have not drifted apart, that there are no
+dependencies, that the command is called `sellanto`, and that the tool starts.
+Its behaviour against a real API is tested in the Sellanto monorepo.
 
-⚠ Това е **отделен обхват**. Старият „Запис · Съдържание" (`write_content`) НЕ
-дава право върху кода на темата — ключ, издаден да синхронизира блога, не бива
-да може да вкарва JavaScript във витрината. Важи и за заварените ключове:
-правата се смятат на всяка заявка, а не се пазят в реда на ключа.
-
-Искат се още две неща:
-
-- този, който издава ключа, да има правото `themes.edit_code`;
-- планът на магазина да включва редактора на код (пробният го няма).
-
-Ако акаунтът има няколко магазина, **стесни ключа до един**.
-
-## Работният цикъл
-
-```bash
-sellanto init --api https://<магазинът>
-sellanto pull        # темата + .sellanto/THEME-REFERENCE.md
-
-sellanto watch       # качва при всяко запазване
-sellanto preview     # адресът, на който се вижда
-sellanto publish     # чак сега го виждат купувачите
-```
-
-Магазинът се открива сам, ако ключът стига до един. При няколко — `--store`.
-
----
-
-## Трите неща, които изненадват
-
-### Качването НЕ е публикуване
-
-`watch` пише в **чернова**. Витрината я показва само на адреса от `preview`;
-купувачите виждат старото, докато не кажеш `publish`.
-
-Така е нарочно: наблюдател на файлове праща по едно състояние на всеки `Ctrl+S`,
-включително полуписания шаблон. Записът от екрана в админа Е публикуване, защото
-там е едно обмислено натискане върху един файл.
-
-⚠ `publish` пуска **всички** файлове от черновата наведнъж. Тема се мени със
-свързани файлове — нова секция иска и шаблона, който я вика, и стила, който я
-рисува; пуснати поединично, между първия и третия има миг с половин промяна пред
-клиенти.
-
-### Темата е Twig в пясъчник
-
-Работи **само** изброеното в `.sellanto/THEME-REFERENCE.md`. Няма ги неща, които
-работят в обикновен Twig: `|upper`, `|raw`, `source()`, `constant()`, `range`,
-операторът `..`. Няма и извикване на метод върху какъвто и да е обект.
-
-⚠ **Забраненото не пада при качване, а при рисуване.** Файл с `|upper` минава
-проверката и после секцията просто не се показва. Изчезне ли нещо от страницата
-без грешка — първо търси име, което не е в справката.
-
-Справката се генерира от кода на платформата и се обновява при всяко `pull`.
-Не я редактирай.
-
-### Чекаутът не се редактира
-
-Оформлението на чекаута, парчетата в него и `templates/checkout.json` са само за
-четене, колкото и права да има ключът. Счупена начална страница е неудобство;
-счупен чекаут са поръчки, които не се случват, и се вижда чак когато някой
-погледне оборота.
-
----
-
-## Когато нещо се обърка
-
-```bash
-sellanto diff                     # кои файла съм пипал
-sellanto diff sections/hero.twig  # какво точно, ред по ред
-sellanto versions sections/hero.twig
-sellanto restore sections/hero.twig --version 3 --publish
-```
-
-Всяко публикуване оставя следа — същата история, която пази и редакторът в
-админа. `restore` без `--version` връща към **доставения** файл на темата.
-
-`conflicts` казва кои твои файлове са копия на файл, който платформата е сменила
-оттогава — поправка в темата не стига до копието, а иначе няма откъде да го
-научиш.
-
-## Друга тема, преди да я пуснеш
-
-```bash
-sellanto themes                       # до кои имаш право
-sellanto init --api https://... --theme kometa
-```
-
-Презаписите се пазят по двойката (магазин, тема), тоест тема може да бъде
-подготвена, преди да е активирана от админа.
-
-⚠ **Прегледът работи само за активната тема** — ключът за преглед е обвързан с
-двойката, а витрината рисува темата на магазина. Инструментът го напомня.
-
-## Границите
-
-| | |
-|---|---|
-| файл | 512 KB |
-| свои файлове на тема | 200 |
-| дължина на пътя | 191 знака |
-| групова заявка | 60 файла / 4 MB |
-| заявки към API-то | 40 в минута на акаунт |
-
-Последният ред е причината `pull`, `push` и `watch` да работят на партиди: една
-тема е ~105 файла, тоест един файл на заявка значи, че първата стъпка не може да
-завърши. При ударен таван инструментът изчаква `Retry-After` и продължава.
-
-**Двоичните файлове** (`.woff2`, `.png`) не минават през този канал — качват се
-като медия от админа. Папката не е пълно копие на темата.
-
-## Отнемане на достъпа
-
-Изтрий ключа от същия екран. Спира веднага: правата се смятат на всяка заявка, а
-не се пазят в реда на ключа. Вече публикуваните файлове остават — връщат се с
-`restore` или от редактора в админа.
-
-## Лиценз и проверка
-
-MIT — виж [LICENSE](LICENSE).
-
-`npm test` проверява това, което тази папка обещава: че версията в
-`package.json` и версията в скрипта не са се разминали, че зависимости няма, че
-командата се казва `sellanto` и че инструментът тръгва. Работата му срещу
-истинско API се проверява в монорепото на Sellanto.
-
----
-
-## In English
-
-`sellanto-theme.mjs` is the theme development client for merchants on
-[Sellanto](https://sellanto.com): it pulls a store's theme into a local folder,
-uploads on save to a draft layer, and publishes to the live storefront on an
-explicit command. Single file, no dependencies, Node 20+.
-
-Install with `npm i -g github:sellanto/cli`, which gives you a `sellanto`
-command. **Not from the npm registry:** every store also serves the client
-itself, at `GET /api/{version}/tools/theme-cli/download`, and `selfupdate`
-pulls from there — so the client and the API it talks to cannot drift apart.
-This repository exists so you can read the code before running it and verify
-that the file your store served you is byte for byte the file published here.
-MIT licensed. Issues are welcome.
+Issues and questions are welcome.
