@@ -83,7 +83,7 @@ import child from 'node:child_process';
  * compares STRINGS, so an unchanged version over changed content means "you are
  * already on the newest" told to someone holding the old text.
  */
-const VERSION = '2026-09-29.6';
+const VERSION = '2026-09-29.7';
 
 const CONFIG = '.sellanto.json';
 const TOKEN_FILE = '.sellanto.token';
@@ -662,14 +662,37 @@ async function exchange(api, requestId, verifier) {
  * no success check here: this is a convenience, not a step.
  */
 function open(url) {
-  const [command, args] = process.platform === 'win32'
-    ? ['cmd', ['/c', 'start', '', url]]
+  /*
+  | ⚠ ON WINDOWS THE URL MUST BE QUOTED, AND THIS IS NOT BELT AND BRACES.
+  |
+  | `cmd.exe` treats `&` as a command separator. Our address carries four
+  | parameters, so `cmd /c start "" https://…?request=A&challenge=B&…` reaches
+  | the browser as `…?request=A` and cmd tries to RUN `challenge=B` as a
+  | command. The person then lands on a screen saying the request is
+  | incomplete — and nothing in the tool's own output looks wrong, because the
+  | line it printed is correct. Measured, not guessed.
+  |
+  | Inside double quotes `&` loses its meaning, so the address arrives whole.
+  | `windowsVerbatimArguments` is required: without it Node rebuilds the
+  | command line and the quoting we just added is not what cmd sees.
+  |
+  | The empty `""` before it is the window title `start` expects — without it
+  | `start` takes the quoted address AS the title and opens nothing.
+  */
+  const windows = process.platform === 'win32';
+
+  const [command, args] = windows
+    ? ['cmd', ['/c', 'start', '""', `"${url}"`]]
     : process.platform === 'darwin'
       ? ['open', [url]]
       : ['xdg-open', [url]];
 
   try {
-    child.spawn(command, args, { stdio: 'ignore', detached: true }).unref();
+    child.spawn(command, args, {
+      stdio: 'ignore',
+      detached: true,
+      windowsVerbatimArguments: windows,
+    }).unref();
   } catch { /* no browser: the address is printed */ }
 }
 
