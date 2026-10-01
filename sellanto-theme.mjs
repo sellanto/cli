@@ -83,7 +83,7 @@ import child from 'node:child_process';
  * compares STRINGS, so an unchanged version over changed content means "you are
  * already on the newest" told to someone holding the old text.
  */
-const VERSION = '2026-09-29.7';
+const VERSION = '2026-10-01';
 
 const CONFIG = '.sellanto.json';
 const TOKEN_FILE = '.sellanto.token';
@@ -97,6 +97,38 @@ const DIRECTORIES = [
 ];
 
 const EXTENSIONS = ['.twig', '.json', '.css', '.js', '.txt', '.md'];
+
+/**
+ * The hosts that ARE the platform. A key exchange and a self-update go to one of
+ * these and nowhere else (security audit 2026-09-30, F1 + F2).
+ *
+ * ⚠ A LURED APPROVAL PAGE CHOOSES `api`. The callback on 127.0.0.1 carries the
+ * address the key is then collected from — and the page that sent the browser
+ * there may be a fake dashboard. Without this list the tool handed its PKCE
+ * secret to whatever host that page named. The same list stops `selfupdate`
+ * from replacing the tool with bytes served by a mistyped `--api` or by a
+ * store's own custom domain, whose DNS the platform does not control.
+ */
+const PLATFORM_HOSTS = ['sellanto.com'];
+const PLATFORM_SUFFIXES = ['.sellanto.com', '.sellantoshop.dev'];
+
+const isLoopback = (host) => ['localhost', '127.0.0.1', '::1', '[::1]'].includes(host)
+  || host.endsWith('.localhost')
+  || host.endsWith('.test');
+
+function isPlatform(address) {
+  let url;
+
+  try { url = new URL(address); } catch { return false; }
+
+  const host = url.hostname.toLowerCase();
+
+  return url.protocol === 'https:'
+    && (PLATFORM_HOSTS.includes(host) || PLATFORM_SUFFIXES.some((suffix) => host.endsWith(suffix)));
+}
+
+/** A theme slug or a store id — the two values glued into request paths (audit F3). */
+const SLUG = /^[a-z0-9][a-z0-9_-]{0,63}$/i;
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Small things
@@ -154,7 +186,17 @@ const sha256 = (s) => crypto.createHash('sha256').update(s, 'utf8').digest('hex'
  * checksum, when the version was last checked). Three places writing the file
  * are three chances for one of them to drop another one's field.
  */
+/**
+ * ⚠ `storeTheme` IS RUNTIME-ONLY and is stripped here, at the one door to the
+ * file. It is asked on every run (see `main`); remembered on disk it becomes a
+ * second answer to "what does the store render", and the copy is the one that
+ * goes stale.
+ */
 function saveConfig(cfg) {
+  const { storeTheme: _live, ...rest } = cfg;
+
+  cfg = rest;
+
   fs.writeFileSync(CONFIG, JSON.stringify(cfg, null, 2) + '\n', 'utf8');
 }
 
@@ -223,6 +265,15 @@ function call(cfg, method, route, body, retried = false, raw = false) {
   | becomes a silent puzzle — one level too many and the request goes to
   | `stores/token`, which is a 404 with no reason attached.
   */
+  /*
+  | ⚠ THE STORE ID IS GLUED INTO THE PATH, so it is checked before it is glued:
+  | `.sellanto.json` is hand-edited, and `../..` there would reach a different
+  | route than the one the command meant (audit F3).
+  */
+  if (!route.startsWith('/') && !SLUG.test(String(cfg.store ?? ''))) {
+    die(`The store id \`${cfg.store}\` in ${CONFIG} does not look like one.`);
+  }
+
   const base = `${cfg.api.replace(/\/$/, '')}/api/${cfg.version}`;
   const url = new URL(route.startsWith('/')
     ? `${base}${route}`
@@ -237,9 +288,7 @@ function call(cfg, method, route, body, retried = false, raw = false) {
   | Loopback is the exception, because there is no network there to listen on —
   | and without it, working against your own `artisan serve` would be impossible.
   */
-  const local = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(url.hostname)
-    || url.hostname.endsWith('.localhost')
-    || url.hostname.endsWith('.test');
+  const local = isLoopback(url.hostname);
 
   if (url.protocol !== 'https:' && !local) {
     die([`The key will not travel over ${url.protocol} to ${url.hostname}.`, 'Change `api` in .sellanto.json to https://'].join('\n   '));
@@ -324,8 +373,18 @@ function call(cfg, method, route, body, retried = false, raw = false) {
   });
 }
 
-const remote = (cfg, method, suffix, body) =>
-  call(cfg, method, `themes/${cfg.theme}/${suffix}`, body);
+/*
+| ⚠ THE SLUG IS CHECKED BEFORE IT BECOMES PART OF A URL (audit F3). A theme
+| named `../../tools/theme-cli` in `.sellanto.json` used to aim the request at a
+| different route; now it is refused with a sentence and nothing is sent.
+*/
+const remote = (cfg, method, suffix, body) => {
+  if (!SLUG.test(String(cfg.theme ?? ''))) {
+    die(`The theme \`${cfg.theme}\` in ${CONFIG} is not a plain slug (letters, digits, - and _).`);
+  }
+
+  return call(cfg, method, `themes/${cfg.theme}/${suffix}`, body);
+};
 
 /* ═══════════════════════════════════════════════════════════════════════════
    The disk
@@ -381,6 +440,13 @@ function safeRelative(relative) {
 
   const normal = relative.split('\\').join('/');
 
+  /*
+  | ⚠ PLAIN CHARACTERS ONLY (audit F4). `%2e%2e`, look-alike dots and the like
+  | never escaped the folder — containment below holds — but they landed as
+  | literal, confusing directory names. No theme file needs them.
+  */
+  if (!/^[A-Za-z0-9._/-]+$/.test(normal) || normal.split('/').some((part) => /^\.+$/.test(part))) return null;
+
   if (normal.startsWith('/') || /^[a-zA-Z]:/.test(normal) || normal.split('/').includes('..')) return null;
   if (!DIRECTORIES.includes(normal.split('/')[0])) return null;
   if (!EXTENSIONS.includes(path.extname(normal).toLowerCase())) return null;
@@ -391,20 +457,48 @@ function safeRelative(relative) {
   return full === root || full.startsWith(root + path.sep) ? normal : null;
 }
 
+/**
+ * Writes one file and says WHICH of three things happened.
+ *
+ * ⚠ AN UNCHANGED FILE IS NOT REWRITTEN, and that is not a micro-optimisation.
+ * Two things depended on it:
+ *
+ *   1. `pull` could not tell "downloaded 176 files" from "176 files exist" —
+ *      it always wrote all of them and always counted all of them;
+ *   2. since `serve` watches the folder, rewriting every file makes the watcher
+ *      upload all 176 straight back — against a ceiling of 40 requests a
+ *      minute, for a folder that did not change.
+ *
+ * @returns 'created' · 'replaced' · 'same' · null when the path is refused
+ */
 function write(relative, content) {
   const safe = safeRelative(relative);
 
   if (safe === null) {
     say(`  ✗ path from the server skipped: ${relative}`);
 
-    return false;
+    return null;
   }
 
   const full = path.join(process.cwd(), safe);
+
+  let before = null;
+
+  try {
+    before = fs.readFileSync(full, 'utf8');
+  } catch (e) {
+    // Missing is the ordinary case on a first pull; unreadable is treated the
+    // same, because the answer to both is "write it".
+  }
+
+  if (before === content) {
+    return 'same';
+  }
+
   fs.mkdirSync(path.dirname(full), { recursive: true });
   fs.writeFileSync(full, content, 'utf8');
 
-  return true;
+  return before === null ? 'created' : 'replaced';
 }
 
 /**
@@ -510,6 +604,19 @@ async function login(args) {
     die('Refused on the approval screen. Nothing was written.');
   }
 
+  /*
+  | ⚠ `api` CAME THROUGH THE BROWSER, SO IT IS CHECKED BEFORE THE SECRET GOES
+  | THERE (audit F2). A convincing fake dashboard can relay `state` to this port
+  | and name its own server as `api`; the tool would then post `request_id` and
+  | the verifier to it — and the fake page can even show the matching code. The
+  | secret goes only to the platform, or, when `--connect` was typed by hand for
+  | a local setup, to that same host.
+  */
+  if (!exchangeAllowed(back.api, args)) {
+    die([`The approval pointed the key exchange at ${back.api || '(nothing)'}, which is not the platform.`,
+      'Nothing was sent. If you did not start this login yourself, someone else did.'].join('\n   '));
+  }
+
   say('  … approved, collecting the key');
 
   /*
@@ -541,6 +648,29 @@ async function login(args) {
   say('');
   say(`  Now: ${ME} pull`);
   say('');
+}
+
+/** May the secret travel to `api`? The platform, or the host `--connect` named. */
+function exchangeAllowed(api, args) {
+  let url;
+
+  try { url = new URL(api); } catch { return false; }
+
+  if (url.pathname.replace(/\/$/, '') !== '' || url.search || url.username || url.password) return false;
+  if (isPlatform(api)) return true;
+
+  const connect = flag(args, '--connect');
+
+  if (connect === undefined) return false;
+
+  let asked;
+
+  try { asked = new URL(connect); } catch { return false; }
+
+  // A hand-typed `--connect` is a local or staging setup: loopback (dashboard and
+  // API on two `.test` hosts) or the very host that was typed, over HTTPS.
+  return isLoopback(url.hostname)
+    || (asked.hostname === url.hostname && url.protocol === 'https:');
 }
 
 /** The characters the approval screen computes too — derived from the id. */
@@ -863,7 +993,8 @@ async function pull(cfg) {
     wanted.push(file.path);
   }
 
-  let written = 0;
+  const tally = { created: 0, replaced: 0, same: 0 };
+  const replaced = [];
 
   for (const part of batches(wanted)) {
     let rest = part;
@@ -875,7 +1006,15 @@ async function pull(cfg) {
       const got = Array.isArray(out.files) ? out.files : [];
 
       for (const file of got) {
-        if (typeof file.content === 'string' && write(file.path, file.content)) written++;
+        if (typeof file.content !== 'string') continue;
+
+        const what = write(file.path, file.content);
+
+        if (what === null) continue;
+
+        tally[what]++;
+
+        if (what === 'replaced') replaced.push(file.path);
       }
 
       const done = new Set(got.map((f) => f.path));
@@ -886,7 +1025,7 @@ async function pull(cfg) {
       // at all would spin forever.
       if (out.truncated && got.length === 0) break;
 
-      say(`  … ${written}/${wanted.length}`);
+      say(`  … ${tally.created + tally.replaced + tally.same}/${wanted.length}`);
     }
   }
 
@@ -900,8 +1039,45 @@ async function pull(cfg) {
   */
   await refreshReference(cfg);
 
-  say(`  ✓ ${files(written)} in ${process.cwd()}`);
-  say(`\n  The theme is ${listing.theme}. Write, then: ${ME} watch\n`);
+  /*
+  | ⚠ THE VERSION IS ASKED FOR, because the files listing does not carry it.
+  |
+  | One extra request on a command that already makes a dozen — and it answers
+  | the question someone actually has after a pull: "which version of the theme
+  | am I now holding". A failure here is not a failed pull: an older store
+  | without the address must not turn a finished download into an error.
+  */
+  const known = await call(cfg, 'GET', 'themes').catch(() => null);
+  const mine = (known?.themes ?? []).find((one) => one.theme === listing.theme);
+  const label = mine?.version ? `${listing.theme} ${mine.version}` : listing.theme;
+
+  /*
+  | ⚠ THE THREE OUTCOMES, SEPARATELY. "176 files" was true before the pull and
+  | after it, whatever happened in between — so it could not answer "did I get
+  | anything". What answers it is how many files are NEW and how many CHANGED.
+  */
+  say(`\n  ${label} — ${tally.created} new, ${tally.replaced} updated, ${tally.same} unchanged`);
+
+  /*
+  | ⚠ AND WHICH FILES LOST WHAT THEY HELD. `pull` overwrites; before this, a
+  | local edit that had not been pushed disappeared in silence and the line on
+  | screen looked like success. It cannot be known whether those bytes were
+  | your work or an older copy — so they are NAMED, and the judgement is left
+  | to the person who wrote them.
+  */
+  if (replaced.length > 0) {
+    say(`\n  ⚠ ${replaced.length} of them held something different here and it is gone:`);
+
+    for (const route of replaced.slice(0, 10)) say(`      ${route}`);
+
+    if (replaced.length > 10) say(`      … and ${replaced.length - 10} more`);
+
+    say(`\n    Was that your work? It is in git, or nowhere — ${ME} pull does not keep a copy.`);
+  }
+
+  say(tally.created + tally.replaced === 0
+    ? `\n  ✓ Nothing came down — ${process.cwd()} already matched the store.\n`
+    : `\n  ✓ ${process.cwd()}. Write, then: ${ME} serve\n`);
 }
 
 /** What differs — without uploading anything. */
@@ -926,15 +1102,42 @@ async function status(cfg, args = []) {
   */
   if (args.includes('--json')) {
     emit({
+      store: storeLabel(cfg),
+      store_id: cfg.store ?? null,
       theme: listing.theme,
+      store_theme: cfg.storeTheme ?? null,
       changed: changed.map(([route, why]) => ({ path: route, state: why.trim() === 'new' ? 'new' : 'changed' })),
       removed,
       draft_files: listing.draft?.files ?? 0,
       stale: behind?.stale ?? null,
+      tool_version: VERSION,
     });
 
     return;
   }
+
+  /*
+  | ⚠ WHICH STORE AND WHICH THEME — THE FIRST TWO LINES (01.10.2026).
+  |
+  | Until now `status` answered "what differs" without ever saying WHAT it
+  | was comparing against. Someone with two folders, or one folder and two
+  | stores, read a clean answer with no way to tell it was about the other
+  | one — and that failure is silent: a clean `status` against the wrong
+  | store looks exactly like a clean `status` against the right one.
+  |
+  | ⚠ THE HOST, NOT THE PUBLIC ID. `01M20ZP…` is what the API wants; the
+  | address is what the person recognises. And it costs no request — it is
+  | the `api` they are already pointed at.
+  */
+  say(`\n  Store: ${storeLabel(cfg)}`);
+
+  say(cfg.storeTheme && cfg.storeTheme !== cfg.theme
+    ? `  Theme: ${cfg.theme}  — preparing; the store renders ${cfg.storeTheme}`
+    : `  Theme: ${cfg.theme}  — the store renders it`);
+
+  say(`  Tool:  ${VERSION}`);
+
+  say('');
 
   if (behind !== null && behind.stale > 0) {
     say(`  ⚠ ${files(behind.stale)} ${behind.stale === 1 ? 'is' : 'are'} behind the theme — see: conflicts`);
@@ -1063,9 +1266,25 @@ async function push(cfg, args = []) {
 async function watch(cfg) {
   const url = (await remote(cfg, 'GET', 'preview')).preview_url;
 
-  say(`\n  Watching ${DIRECTORIES.filter((d) => fs.existsSync(d)).join(', ')}`);
   say(`  Preview: ${url}`);
   say('  Ctrl+C stops.\n');
+
+  uploadOnSave(cfg);
+
+  // Keeps the process alive without spinning the CPU.
+  await new Promise(() => {});
+}
+
+/**
+ * Every save goes into the draft — the half `watch` and `serve` share.
+ *
+ * ⚠ IT DOES NOT BLOCK AND IT PRINTS ITS OWN LINES. `serve` has a server to
+ * bring up afterwards, so a function that never returns could not be reused;
+ * and a silent watcher is worse than none, because the person cannot tell an
+ * upload that failed from one that never fired.
+ */
+function uploadOnSave(cfg) {
+  say(`  Watching ${DIRECTORIES.filter((d) => fs.existsSync(d)).join(', ')}`);
 
   const pending = new Set();
   let timer = null;
@@ -1166,9 +1385,6 @@ async function watch(cfg) {
       timer = setTimeout(() => void flush(), 150);
     });
   }
-
-  // Keeps the process alive without spinning the CPU.
-  await new Promise(() => {});
 }
 
 async function publish(cfg) {
@@ -1183,10 +1399,35 @@ async function publish(cfg) {
     : `  ✓ ${files(done.published)} now live.`);
 }
 
-async function preview(cfg) {
+/**
+ * The address where the draft can be seen — and the browser on it.
+ *
+ * ⚠ IT OPENS, like `login`. The address carries a signed key of a hundred-odd
+ * characters, so "copy it out of the terminal" is a step people get wrong, and
+ * the key lives an hour — a mistyped copy is noticed late. `--no-open` is the
+ * same escape hatch as in `login`: a machine with no desktop has to be able to
+ * take the printed line elsewhere.
+ *
+ * ⚠ THE LINE IS STILL PRINTED, AND ON ITS OWN. Terminals linkify a bare URL
+ * only when it is whole; until 30.09.2026 the server handed out a broken one
+ * (`…?store=slug/bg/?_sf_preview=…`), which is why it looked unclickable here.
+ */
+async function preview(cfg, args = []) {
+  const running = await runningServe(cfg);
+
+  if (running !== null) {
+    say(`\n  ${running}\n  (serve is running: the local address, its key refreshes itself)\n`);
+
+    if (!args.includes('--no-open')) open(running);
+
+    return;
+  }
+
   const out = await remote(cfg, 'GET', 'preview');
 
   say(`\n  ${out.preview_url}\n  (the key lives ${Math.round(out.expires_in / 60)} minutes)\n`);
+
+  if (!args.includes('--no-open')) open(out.preview_url);
 }
 
 async function discard(cfg, args = []) {
@@ -1445,6 +1686,21 @@ async function conflicts(cfg, args = []) {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const index = (cfg) => remote(cfg, 'GET', 'files');
+
+/**
+ * Which store, said the way the merchant knows it — by host.
+ *
+ * A malformed `api` is not an error here: this line exists to orient
+ * someone, and refusing to print it would hide the very setting that is
+ * wrong.
+ */
+function storeLabel(cfg) {
+  try {
+    return new URL(cfg.api).host;
+  } catch (e) {
+    return String(cfg.api || '—');
+  }
+}
 
 /**
  * What changed since the last upload — BY CHECKSUM, not by time.
@@ -1759,7 +2015,7 @@ async function checkTool(cfg) {
 
   if (out === null || out.version === VERSION) return;
 
-  if (cfg.autoUpdate === true) {
+  if (cfg.autoUpdate === true && isPlatform(cfg.api)) {
     say(`  … new version ${out.version} — updating (autoUpdate)`);
     await applyUpdate(cfg, out);
 
@@ -1780,8 +2036,11 @@ async function checkTool(cfg) {
  * turns this against them is short: one mistyped letter in `--api`, a poisoned
  * DNS answer, a proxy on a foreign network. So the platform SAYS and the person
  * DECIDES — unless they explicitly put `"autoUpdate": true` in `.sellanto.json`.
+ * ⚠ `autoUpdate: true` TRUSTS THE STORE WITH CODE EXECUTION on this machine.
  *
- * Three fences, each stopping something different:
+ * Four fences, each stopping something different:
+ *   0. **the platform host** — only `sellanto.com`, `*.sellanto.com` or `*.sellantoshop.dev` may
+ *      serve an update; the checksum below cannot tell who sent it;
  *   1. **HTTPS** — required by `call()` for every host outside loopback;
  *      against eavesdropping and tampering on the network;
  *   2. **the checksum** — the downloaded bytes are checked against the `sha256`
@@ -1790,6 +2049,19 @@ async function checkTool(cfg) {
  *      returned with 200 does not get written over the tool.
  */
 async function applyUpdate(cfg, meta) {
+  /*
+  | ⚠ ONLY THE PLATFORM MAY REPLACE THE TOOL (audit F1). The checksum comes from
+  | the same server as the bytes, so it proves integrity, not origin. A mistyped
+  | `api`, a store's custom domain or a local fake could serve a matching pair —
+  | and the replaced file runs with the developer's rights on the next command.
+  */
+  if (!isPlatform(cfg.api)) {
+    say(`  ✗ ${cfg.api} is not the platform — the tool updates itself only from sellanto.com or *.sellantoshop.dev.`);
+    say('    Install from the repository instead: npm i -g github:sellanto/cli\n');
+
+    return false;
+  }
+
   const source = await call(cfg, 'GET', '/tools/theme-cli/download', undefined, false, true)
     .catch((e) => { say(`  ✗ ${e.message}`); return null; });
 
@@ -1813,7 +2085,22 @@ async function applyUpdate(cfg, meta) {
     return false;
   }
 
-  const self = process.argv[1];
+  /*
+  | ⚠ THE REAL FILE, AND ITS EXECUTE BIT (01.10.2026).
+  |
+  | `npm i -g` makes `sellanto` a SYMLINK into the package. Renaming over the
+  | link replaced the link itself with a plain 0644 file: the next command
+  | answered `permission denied`, and the package behind it kept the old
+  | version. So the target is resolved, and the new file gets the old one's mode.
+  */
+  let self = process.argv[1];
+  let mode = 0o755;
+
+  try {
+    self = fs.realpathSync(self);
+    mode = fs.statSync(self).mode & 0o777;
+  } catch { /* keep the path as invoked */ }
+
   const temp = `${self}.new`;
 
   /*
@@ -1823,7 +2110,8 @@ async function applyUpdate(cfg, meta) {
   | itself.
   */
   try {
-    fs.writeFileSync(temp, source, 'utf8');
+    fs.writeFileSync(temp, source, { encoding: 'utf8', mode });
+    fs.chmodSync(temp, mode | 0o111);
     fs.renameSync(temp, self);
   } catch (e) {
     try { fs.unlinkSync(temp); } catch { /* nothing to remove */ }
@@ -1861,6 +2149,281 @@ async function selfupdate(cfg) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
+   One local address to work against
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Which answers may be rewritten — text only; an image must arrive byte for byte. */
+const REWRITABLE = /^(?:text\/|application\/(?:javascript|json|xml|manifest|ld\+json)|image\/svg)/i;
+
+/** How long before the key expires a new one is fetched. */
+const REFRESH_MARGIN_MS = 90 * 1000;
+
+/**
+ * A local address that keeps showing the draft — `serve`.
+ *
+ * =========================================================================
+ * WHY A PROXY, AND NOT A LOCAL RENDERER
+ * =========================================================================
+ * The theme is Twig and the STOREFRONT renders it: the catalogue, the prices,
+ * the cart and the customer all live there. A local renderer would be a second
+ * implementation of the shop, and the day the two disagree is the day the
+ * preview lies about what customers will get.
+ *
+ * So this is a pipe, not an engine. It forwards to the store, puts the signed
+ * key on every request, and rewrites the store's address in the answer to the
+ * local one — so links, forms and assets keep you HERE instead of throwing you
+ * onto the public site halfway through a click.
+ *
+ * =========================================================================
+ * ⚠ WHAT THIS BUYS OVER `preview`
+ * =========================================================================
+ * `preview` mints a key that lives an hour. The address in the bar then goes
+ * stale, and the next reload silently shows the PUBLISHED page — exactly when
+ * someone is checking their work, and with nothing on screen to say so. Here
+ * the key is refreshed behind the scenes and never in the way, the address
+ * never changes, and the browser keeps its tab, its scroll and its devtools.
+ *
+ * ⚠ ON `127.0.0.1` ONLY, never `0.0.0.0`. The pipe carries a key that shows
+ * unpublished work; the second would hand it to everyone on the café wifi.
+ *
+ * ⚠ AND IT IS NOT A `.local` DOMAIN. A name like `shop.local` has to go in the
+ * system hosts file, which needs administrator rights — a theme tool must not
+ * ask for those. `127.0.0.1:<port>` needs nothing and reads the same.
+ */
+async function serve(cfg, args = []) {
+  const asked = flag(args, '--port');
+  const port = asked === undefined ? 8787 : Number(asked);
+
+  if (!Number.isInteger(port) || port < 1024 || port > 65535) {
+    die('--port wants a whole number between 1024 and 65535.');
+  }
+
+  let key = await freshKey(cfg);
+
+  const local = `http://127.0.0.1:${port}`;
+
+  const server = http.createServer((request, response) => {
+    // `preview` asks here whether this is still the pipe for ITS folder.
+    if (request.url === SERVE_PROBE) {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ store: cfg.store ?? null, theme: cfg.theme, url: local + key.path }));
+
+      return;
+    }
+
+    void relay(cfg, request, response, () => key, (next) => { key = next; }, local);
+  });
+
+  server.on('error', (e) => die(e.code === 'EADDRINUSE'
+    ? `Port ${port} is taken. Another one: ${ME} serve --port 8788`
+    : e.message));
+
+  await new Promise((resolve) => server.listen(port, '127.0.0.1', resolve));
+
+  say(`\n  ${local}${key.path}`);
+  say(`  The draft of ${cfg.theme}, from ${key.origin}`);
+
+  /*
+  | ⚠ A MARKER, SO `preview` OPENS THIS ADDRESS AND NOT THE STORE'S (30.09.2026).
+  |
+  | With `serve` running, `preview` used to open the one-hour key on the
+  | store's own address — a second tab that goes stale while this one does
+  | not. The marker says only where to ask; `preview` still asks the port
+  | before believing it, so a marker left by a killed process costs nothing.
+  */
+  fs.mkdirSync(HOME, { recursive: true });
+  fs.writeFileSync(SERVE_MARKER, JSON.stringify({ port, pid: process.pid }));
+
+  process.on('exit', () => { try { fs.unlinkSync(SERVE_MARKER); } catch { /* already gone */ } });
+  for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => process.exit(130));
+
+  /*
+  | ⚠ IT UPLOADS ON SAVE TOO, AND THAT IS THE WHOLE POINT (01.10.2026).
+  |
+  | The first edition only piped. Measured with a real person: they edited a
+  | section, reloaded the local address and saw nothing change — because the
+  | edit was still on their disk. Nothing was broken; the tool simply answered
+  | a question they were not asking.
+  |
+  | An address that looks like a dev server and does not upload is a trap: the
+  | missing step is invisible, and the conclusion someone reaches is "the
+  | preview is broken", not "I forgot a command". So `serve` is the whole loop
+  | — save, upload, reload — and `watch` stays for a terminal without one.
+  |
+  | ⚠ `--no-watch` FOR THE CASE WHERE SOMEONE ELSE IS WATCHING. Two watchers
+  | on one folder upload every save twice, against a ceiling of 40 requests a
+  | minute.
+  */
+  if (!args.includes('--no-watch')) uploadOnSave(cfg);
+
+  say('  The key refreshes itself. Ctrl+C stops.\n');
+
+  if (!args.includes('--no-open')) open(local + key.path);
+
+  // Keeps the process alive without spinning the CPU.
+  await new Promise(() => {});
+}
+
+const SERVE_MARKER = `${HOME}/serve.json`;
+const SERVE_PROBE = '/__sellanto/serve';
+
+/**
+ * The local address of a `serve` running for THIS folder, or null.
+ *
+ * ⚠ THE PORT IS ASKED, NOT THE FILE BELIEVED. A killed process leaves its
+ * marker behind, and another program may have the port since; only a pipe
+ * that answers for the same store and theme counts.
+ */
+async function runningServe(cfg) {
+  let marker;
+
+  try {
+    marker = JSON.parse(fs.readFileSync(SERVE_MARKER, 'utf8'));
+  } catch {
+    return null;
+  }
+
+  const answer = await new Promise((resolve) => {
+    const request = http.get({ host: '127.0.0.1', port: marker.port, path: SERVE_PROBE, timeout: 800 }, (response) => {
+      let body = '';
+
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => { body += chunk; });
+      response.on('end', () => {
+        try { resolve(response.statusCode === 200 ? JSON.parse(body) : null); } catch { resolve(null); }
+      });
+    });
+
+    request.on('timeout', () => request.destroy());
+    request.on('error', () => resolve(null));
+  });
+
+  if (answer === null) {
+    try { fs.unlinkSync(SERVE_MARKER); } catch { /* already gone */ }
+
+    return null;
+  }
+
+  return answer.theme === cfg.theme && answer.store === (cfg.store ?? null) ? answer.url : null;
+}
+
+/**
+ * A preview key, and where it points.
+ *
+ * ⚠ THE PLATFORM DECIDES THE ADDRESS, not this file. `preview` already answers
+ * "where is the draft seen"; a second construction here would be a second
+ * answer, and the copy is always the one that drifts.
+ */
+async function freshKey(cfg) {
+  const out = await remote(cfg, 'GET', 'preview');
+  const url = new URL(out.preview_url);
+
+  return {
+    origin: url.origin,
+    path: url.pathname,
+    param: url.search.replace(/^\?/, ''),
+    until: Date.now() + (Number(out.expires_in) || 0) * 1000,
+  };
+}
+
+/**
+ * One request, forwarded.
+ *
+ * ⚠ THE ANSWER IS ASKED FOR UNCOMPRESSED (`accept-encoding: identity`). The
+ * address has to be rewritten inside the body, and rewriting gzip means
+ * unpacking it first — work bought for nothing on a pipe used by one person on
+ * one machine.
+ */
+async function relay(cfg, request, response, keyOf, keep, local) {
+  let key = keyOf();
+
+  /*
+  | ⚠ REFRESHED BEFORE IT DIES, not after. A key that expires mid-session makes
+  | the page fall back to PUBLISHED — without an error, without a redirect, and
+  | without anything on screen to say the work is no longer what is shown.
+  */
+  if (Date.now() > key.until - REFRESH_MARGIN_MS) {
+    key = await freshKey(cfg).catch(() => key);
+    keep(key);
+  }
+
+  const upstreamOrigin = new URL(key.origin);
+  const target = new URL(request.url, key.origin);
+
+  target.protocol = upstreamOrigin.protocol;
+  target.host = upstreamOrigin.host;
+
+  // The key rides on EVERY request: links inside the page carry it, but a form
+  // post, a fetch from the theme's script and a hand-typed path do not.
+  for (const [name, value] of new URLSearchParams(key.param)) {
+    if (!target.searchParams.has(name)) target.searchParams.set(name, value);
+  }
+
+  const headers = { ...request.headers, host: target.host, 'accept-encoding': 'identity' };
+
+  // A 304 carries no body, and a body is what has to be rewritten.
+  delete headers['if-none-match'];
+  delete headers['if-modified-since'];
+
+  const client = target.protocol === 'https:' ? https : http;
+
+  const upstream = client.request(target, { method: request.method, headers }, (answer) => {
+    const type = String(answer.headers['content-type'] ?? '');
+    const out = { ...answer.headers };
+
+    delete out['content-encoding'];
+    delete out['content-length'];
+
+    // A redirect to the store is a redirect out of the pipe.
+    if (typeof out.location === 'string') out.location = out.location.split(key.origin).join(local);
+
+    /*
+    | ⚠ THE COOKIE HAS TO LOSE ITS HOME. `Domain=<store>` and `Secure` are both
+    | refused by the browser on `http://127.0.0.1` — and a dropped cookie is an
+    | empty cart and a checkout that forgets, which gets blamed on the theme.
+    */
+    if (out['set-cookie']) {
+      out['set-cookie'] = [out['set-cookie']].flat().map((one) => one
+        .replace(/;\s*Domain=[^;]*/ig, '')
+        .replace(/;\s*Secure/ig, '')
+        .replace(/;\s*SameSite=None/ig, '; SameSite=Lax'));
+    }
+
+    if (!REWRITABLE.test(type)) {
+      response.writeHead(answer.statusCode ?? 200, out);
+      answer.pipe(response);
+
+      return;
+    }
+
+    const chunks = [];
+
+    answer.on('data', (piece) => chunks.push(piece));
+    answer.on('end', () => {
+      const body = Buffer.concat(chunks).toString('utf8').split(key.origin).join(local);
+
+      response.writeHead(answer.statusCode ?? 200, out);
+      response.end(body);
+    });
+  });
+
+  /*
+  | ⚠ A BROKEN PIPE IS SAID, NOT SWALLOWED. Without this the server dies on the
+  | first dropped connection, and the person keeps saving against an address
+  | that stopped answering.
+  */
+  upstream.on('error', (e) => {
+    say(`  ✗ ${request.method} ${request.url} — ${e.message}`);
+
+    if (!response.headersSent) response.writeHead(502, { 'content-type': 'text/plain; charset=utf-8' });
+
+    response.end('The store did not answer: ' + e.message);
+  });
+
+  request.pipe(upstream);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
    The door
    ═══════════════════════════════════════════════════════════════════════════ */
 
@@ -1877,7 +2440,8 @@ const HELP = `
     status [--json]          what differs
     push [--delete]          upload the differences into the draft
     watch                    the same, on every save
-    preview                  the URL where it can be seen
+    preview [--no-open]      the URL where it can be seen (the local one while serve runs)
+    serve [--port N]         one local address: serves the draft AND uploads on save
     publish                  the draft becomes live
     discard [--path <path>]  throw the draft away
 
@@ -1944,6 +2508,13 @@ async function main() {
   }
 
   /*
+  | ⚠ AFTER THE SAVES, AND NOT PART OF THE SETTINGS FILE. Which theme the
+  | storefront renders is a fact about the store TODAY, asked on every run;
+  | written to disk it would be a second, staler copy of the answer.
+  */
+  cfg.storeTheme = slug;
+
+  /*
   | ⚠ THE VERSION CHECK COMES BEFORE THE COMMAND, but does NOT stop it.
   |
   | An old client against a new API sees "it did not work" instead of a
@@ -1952,7 +2523,7 @@ async function main() {
   */
   if (command !== 'selfupdate') await checkTool(cfg);
 
-  const commands = { pull, status, push, watch, preview, publish, discard, diff, versions, restore, conflicts, docs, selfupdate, themes, use };
+  const commands = { pull, status, push, watch, preview, serve, publish, discard, diff, versions, restore, conflicts, docs, selfupdate, themes, use };
 
   if (!commands[command]) die(`No such command \`${command}\`.${HELP}`);
 
